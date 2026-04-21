@@ -1,0 +1,44 @@
+// SoloBill — SQLite schema (MVP)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id       String   @id @default(cuid())
+  email    String   @unique
+  password String
+  clients  Client[]
+}
+
+model Client {
+  id       String    @id @default(cuid())
+  name     String
+  email    String
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  clientId       String
+  client         Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title          String        @default("")
+  description    String
+  lineItemsJson  String        @default("[]")
+  amount         Float
+  status         InvoiceStatus @default(unpaid)
+  dueDate        DateTime
+  createdAt      DateTime      @default(now())
+}
+
+enum InvoiceStatus {
+  paid
+  unpaid
+}
