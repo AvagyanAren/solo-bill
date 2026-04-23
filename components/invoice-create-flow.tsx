@@ -36,11 +36,23 @@ function serializeLines(rows: LineRow[]): string {
   return JSON.stringify(items);
 }
 
-export function InvoiceCreateFlow({ clients }: { clients: ClientOption[] }) {
+export function InvoiceCreateFlow({
+  clients,
+  mockInvoiceAi = false,
+  devDefaultsToSample = false,
+}: {
+  clients: ClientOption[];
+  /** Server passes true when SOLOBILL_MOCK_INVOICE_AI is set */
+  mockInvoiceAi?: boolean;
+  /** In `next dev`, default sample-lines on so the flow works without OpenAI */
+  devDefaultsToSample?: boolean;
+}) {
   const [step, setStep] = useState<1 | 2>(1);
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [dueDate, setDueDate] = useState(defaultDueDateString());
   const [workDescription, setWorkDescription] = useState("");
+  /** Opt out of OpenAI: sample lines. Defaults on when `SOLOBILL_MOCK_INVOICE_AI` is set (server). */
+  const [useSampleLines, setUseSampleLines] = useState(() => mockInvoiceAi || devDefaultsToSample);
   const [genError, setGenError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
@@ -60,7 +72,9 @@ export function InvoiceCreateFlow({ clients }: { clients: ClientOption[] }) {
     setGenError(null);
     setGenerating(true);
     try {
-      const result = await draftInvoiceFromDescription(workDescription);
+      const result = await draftInvoiceFromDescription(workDescription, {
+        useSampleLines,
+      });
       if (!result.ok) {
         setGenError(result.error);
         return;
@@ -100,6 +114,27 @@ export function InvoiceCreateFlow({ clients }: { clients: ClientOption[] }) {
   if (step === 1) {
     return (
       <div className="mx-auto grid max-w-xl gap-6">
+        {mockInvoiceAi ? (
+          <p className="text-xs text-muted-foreground">
+            You are in <span className="font-medium">mock / preview</span> mode: <span className="font-medium">Use sample
+            line items</span> is on — Generate uses fixed sample amounts, not OpenAI.
+          </p>
+        ) : null}
+        <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+          <input
+            id="useSampleLines"
+            type="checkbox"
+            checked={useSampleLines}
+            onChange={(e) => setUseSampleLines(e.target.checked)}
+            className="mt-0.5 size-4 shrink-0 rounded border-input"
+          />
+          <label htmlFor="useSampleLines" className="text-sm leading-snug text-foreground">
+            <span className="font-medium">Use sample line items</span>{" "}
+            <span className="text-muted-foreground">
+              (skip OpenAI — use this to preview the flow with a valid-looking draft; no API key needed in development.)
+            </span>
+          </label>
+        </div>
         <div className="grid gap-2">
           <Label htmlFor="clientId">Client</Label>
           <select

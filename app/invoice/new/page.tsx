@@ -11,10 +11,12 @@ import {
 } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { isInvoiceAiMockMode } from "@/lib/openai-invoice";
 import { requireSession } from "@/lib/require-session";
 
 export default async function NewInvoicePage() {
   const session = await requireSession();
+  const mockInvoiceAi = isInvoiceAiMockMode();
   const clients = await prisma.client.findMany({
     where: { userId: session.userId },
     orderBy: { name: "asc" },
@@ -50,8 +52,19 @@ export default async function NewInvoicePage() {
       <p className="mt-1 text-sm text-muted-foreground">
         Describe the work in your own words — we&apos;ll draft line items you can edit before saving.
       </p>
+      {mockInvoiceAi ? (
+        <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+          <strong>Preview mode:</strong> OpenAI is off — sample line items are filled so you can try the flow without
+          an API key or quota. Set <code className="rounded bg-amber-500/20 px-1">SOLOBILL_MOCK_INVOICE_AI=0</code> in
+          <code className="rounded bg-amber-500/20 px-1">.env</code> to use the real model again.
+        </p>
+      ) : null}
       <div className="mt-8">
-        <InvoiceCreateFlow clients={clients} />
+        <InvoiceCreateFlow
+          clients={clients}
+          mockInvoiceAi={mockInvoiceAi}
+          devDefaultsToSample={process.env.NODE_ENV === "development"}
+        />
       </div>
     </div>
   );

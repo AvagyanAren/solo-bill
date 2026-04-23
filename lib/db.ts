@@ -8,16 +8,13 @@ import { PrismaClient } from "@/app/generated/prisma/client";
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
 /**
- * Resolve `DATABASE_URL` to an absolute path. Prefers a simple `join(cwd, "dev.db")` for the
- * default so behaviour matches Prisma CLI and avoids subtle URL parsing bugs on Windows.
- *
- * The Prisma adapter does `url.replace(/^file:/, "")` — never pass `file:///C:/...` URLs.
+ * Resolve `DATABASE_URL` to an absolute path. Default uses `dev.db` next to package.json.
+ * The Prisma adapter strips a leading `file:` only — do not pass `file:///C:/...` URLs on Windows.
  */
 function resolveDatabaseFilePath(rawEnv: string | undefined): string {
   const fallback = "file:./dev.db";
   const trimmed = (rawEnv ?? fallback).trim().replace(/^["']|["']$/g, "");
 
-  // Fast path: default SQLite URL used everywhere → one unambiguous file next to package.json
   if (trimmed === "file:./dev.db" || trimmed === "file:dev.db") {
     return path.join(process.cwd(), "dev.db");
   }
@@ -58,26 +55,39 @@ function resolveDatabaseFilePath(rawEnv: string | undefined): string {
   return absolute;
 }
 
-/** Create parent dirs, then open/close once so the file exists and the path is valid before Prisma. */
-function prepareSqliteFile(filePath: string): void {
-  const dir = path.dirname(filePath);
-  fs.mkdirSync(dir, { recursive: true });
-  const db = new Database(filePath);
+function ensureDbParentDir(filePath: string): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
+/** Probes better-sqlite3 so NODE_MODULE_VERSION mismatches fail at init with a clear message. */
+function assertBetterSqliteForCurrentNode(absolutePath: string): void {
+  const db = new Database(absolutePath);
   db.close();
+}
+
+function formatSqliteError(absolutePath: string, e: unknown): Error {
+  const base = e instanceof Error ? e.message : String(e);
+  const parts = [
+    `SQLite / better-sqlite3 could not open "${absolutePath}" (cwd="${process.cwd()}", node=${process.version}): ${base}`,
+  ];
+  if (base.includes("NODE_MODULE_VERSION") || base.includes("was compiled against a different Node.js version")) {
+    parts.push(
+      "Native module mismatch: install and run with one Node version only. From the project folder: nvm use (see .nvmrc) OR align Node, then: npm run rebuild:native",
+    );
+  }
+  return new Error(parts.join(" "));
 }
 
 function createPrismaClient() {
   const absolutePath = resolveDatabaseFilePath(process.env.DATABASE_URL);
 
   try {
-    prepareSqliteFile(absolutePath);
+    ensureDbParentDir(absolutePath);
+    assertBetterSqliteForCurrentNode(absolutePath);
   } catch (e) {
-    throw new Error(
-      `SQLite could not open "${absolutePath}" (cwd="${process.cwd()}"): ${e instanceof Error ? e.message : String(e)}`,
-    );
+    throw formatSqliteError(absolutePath, e);
   }
 
-  // Use the same native path string Node/sqlite3 expects on Windows (backslashes OK).
   const adapter = new PrismaBetterSqlite3({
     url: absolutePath,
   });

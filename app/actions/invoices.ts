@@ -1,11 +1,16 @@
 "use server";
 
+import { loadEnvConfig } from "@next/env";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db";
-import { generateInvoiceDraftFromText } from "@/lib/openai-invoice";
+import {
+  generateInvoiceDraftFromText,
+  getMockInvoiceDraftForPreview,
+  isClientSampleDraftAllowed,
+} from "@/lib/openai-invoice";
 import { requireSession } from "@/lib/require-session";
 
 const lineItemSchema = z.object({
@@ -25,7 +30,15 @@ export type CreateInvoiceState = {
   error?: string;
 };
 
-export async function draftInvoiceFromDescription(description: string): Promise<
+export type DraftInvoiceOptions = {
+  /** Fill sample line items (no OpenAI). Allowed in development or when `SOLOBILL_MOCK_INVOICE_AI=1`. */
+  useSampleLines?: boolean;
+};
+
+export async function draftInvoiceFromDescription(
+  description: string,
+  options: DraftInvoiceOptions = {},
+): Promise<
   | { ok: false; error: string }
   | {
       ok: true;
@@ -37,9 +50,21 @@ export async function draftInvoiceFromDescription(description: string): Promise<
     }
 > {
   await requireSession();
+  // Server actions can run before this module’s top-level `loadEnvConfig` is applied; refresh .env
+  // here so `SOLOBILL_MOCK_INVOICE_AI` and the mock branch are always visible.
+  loadEnvConfig(process.cwd());
   const trimmed = description.trim();
   if (!trimmed) {
     return { ok: false, error: "Enter what you worked on." };
+  }
+  if (options.useSampleLines) {
+    if (!isClientSampleDraftAllowed()) {
+      return {
+        ok: false,
+        error: "Sample line items are only available in development or when SOLOBILL_MOCK_INVOICE_AI=1.",
+      };
+    }
+    return { ok: true, draft: getMockInvoiceDraftForPreview(trimmed) };
   }
   return generateInvoiceDraftFromText(trimmed);
 }
