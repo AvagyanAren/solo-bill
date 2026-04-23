@@ -9,10 +9,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { isPublicDemoMode } from "@/lib/public-demo";
 import { getSession } from "@/lib/session";
 
 export default async function Home() {
   const session = await getSession();
+  const publicDemo = isPublicDemoMode();
 
   return (
     <div className="flex min-h-full flex-1 flex-col items-center justify-center bg-background p-6">
@@ -22,6 +24,9 @@ export default async function Home() {
           <CardDescription>
             AI-powered invoicing for freelancers — from plain text to PDF, with payment tracking and
             reminders.
+            {publicDemo && session
+              ? " This deployment is a public demo: open the dashboard without signing in."
+              : null}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">

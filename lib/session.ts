@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
 import { getAuthSecretBytes } from "@/lib/auth-secret";
+import { resolvePublicDemoUserSession } from "@/lib/public-demo";
 
 const SESSION_COOKIE = "sb_session";
 const MAX_AGE_SEC = 60 * 60 * 24 * 7;
@@ -33,20 +34,20 @@ export async function createSession(userId: string, email: string): Promise<void
 export async function getSession(): Promise<SessionPayload | null> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
-  if (!token) {
-    return null;
-  }
-  try {
-    const { payload } = await jwtVerify(token, getAuthSecretBytes());
-    const userId = payload.sub;
-    const email = payload.email;
-    if (typeof userId !== "string" || typeof email !== "string") {
-      return null;
+  if (token) {
+    try {
+      const { payload } = await jwtVerify(token, getAuthSecretBytes());
+      const userId = payload.sub;
+      const email = payload.email;
+      if (typeof userId !== "string" || typeof email !== "string") {
+        return (await resolvePublicDemoUserSession()) ?? null;
+      }
+      return { userId, email };
+    } catch {
+      return (await resolvePublicDemoUserSession()) ?? null;
     }
-    return { userId, email };
-  } catch {
-    return null;
   }
+  return (await resolvePublicDemoUserSession()) ?? null;
 }
 
 export async function clearSession(): Promise<void> {
