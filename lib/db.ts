@@ -1,11 +1,31 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { PrismaClient } from "@/app/generated/prisma/client";
 
+const require = createRequire(import.meta.url);
+
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
+
+/**
+ * Remote libSQL (Turso, etc.) — use on Vercel. Local `file:` DB uses better-sqlite3 (lazy-loaded).
+ * Set `DATABASE_URL=libsql://...` and `TURSO_AUTH_TOKEN` in the host env.
+ */
+function isLibsqlConnectionString(raw: string | undefined): boolean {
+  if (!raw) {
+    return false;
+  }
+  const t = raw.trim();
+  if (t.startsWith("libsql://")) {
+    return true;
+  }
+  if (t.startsWith("wss://") || t.startsWith("https://")) {
+    return t.includes("libsql");
+  }
+  return false;
+}
 
 /**
  * Resolve `DATABASE_URL` to an absolute path. Default uses `dev.db` next to package.json.
@@ -60,7 +80,7 @@ function ensureDbParentDir(filePath: string): void {
 }
 
 /** Probes better-sqlite3 so NODE_MODULE_VERSION mismatches fail at init with a clear message. */
-function assertBetterSqliteForCurrentNode(absolutePath: string): void {
+function assertBetterSqliteForCurrentNode(absolutePath: string, Database: new (path: string) => { close: () => void }) {
   const db = new Database(absolutePath);
   db.close();
 }
@@ -78,12 +98,34 @@ function formatSqliteError(absolutePath: string, e: unknown): Error {
   return new Error(parts.join(" "));
 }
 
-function createPrismaClient() {
+function createLibsqlPrismaClient(): PrismaClient {
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) {
+    throw new Error("DATABASE_URL is required for libsql:// connections.");
+  }
+  const token = process.env["TURSO_AUTH_TOKEN"]?.trim();
+  const adapter = new PrismaLibSql({
+    url,
+    authToken: token,
+  });
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+  });
+}
+
+function createFileSqlitePrismaClient(): PrismaClient {
+  // Lazy `require` so Vercel + Turso never loads the native `better-sqlite3` binary.
+  const Database = require("better-sqlite3") as new (path: string) => { close: () => void };
+  const { PrismaBetterSqlite3 } = require("@prisma/adapter-better-sqlite3") as typeof import(
+    "@prisma/adapter-better-sqlite3"
+  );
+
   const absolutePath = resolveDatabaseFilePath(process.env.DATABASE_URL);
 
   try {
     ensureDbParentDir(absolutePath);
-    assertBetterSqliteForCurrentNode(absolutePath);
+    assertBetterSqliteForCurrentNode(absolutePath, Database);
   } catch (e) {
     throw formatSqliteError(absolutePath, e);
   }
@@ -98,8 +140,17 @@ function createPrismaClient() {
   });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+function createPrismaClient(): PrismaClient {
+  if (isLibsqlConnectionString(process.env.DATABASE_URL)) {
+    return createLibsqlPrismaClient();
+  }
+  if (process.env.VERCEL) {
+    throw new Error(
+      "Vercel: use a remote libSQL database. Set DATABASE_URL=libsql://... and TURSO_AUTH_TOKEN in the Vercel project. Then run `npx prisma db push` against that URL. See .env.example.",
+    );
+  }
+  return createFileSqlitePrismaClient();
 }
+
+// Reuse one client per server instance (important for Vercel + remote libSQL).
+export const prisma = (globalForPrisma.prisma ??= createPrismaClient());
