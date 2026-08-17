@@ -1,18 +1,29 @@
 import { loadEnvConfig } from "@next/env";
 
 import { prisma } from "@/lib/db";
+import { isPublicDemoModeFromEnv } from "@/lib/public-demo-flag";
 
-const ENV_PUBLIC = "SOLOBILL_PUBLIC_DEMO" as const;
 const ENV_EMAIL = "SOLOBILL_DEMO_USER_EMAIL" as const;
 
 /**
  * When enabled on the **hosted** app (Vercel, etc.), visitors get the demo user’s session without
  * signing in. Enable only for throwaway / shared demo data — never for private customer data.
+ *
+ * For Edge middleware, use {@link isPublicDemoModeFromEnv} from `@/lib/public-demo-flag` instead
+ * (this module pulls in Prisma).
  */
 export function isPublicDemoMode(): boolean {
-  loadEnvConfig(process.cwd());
-  const v = process.env[ENV_PUBLIC]?.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
+  if (isPublicDemoModeFromEnv()) {
+    return true;
+  }
+  try {
+    if (typeof process.cwd === "function") {
+      loadEnvConfig(process.cwd());
+    }
+  } catch {
+    /* ignore */
+  }
+  return isPublicDemoModeFromEnv();
 }
 
 function demoUserEmailFromEnv(): string {
@@ -47,3 +58,5 @@ export function getPublicDemoConfig(): { showBanner: boolean; demoEmail: string 
   }
   return { showBanner: true, demoEmail: demoUserEmailFromEnv() };
 }
+
+export { isPublicDemoModeFromEnv } from "@/lib/public-demo-flag";

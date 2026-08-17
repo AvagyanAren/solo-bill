@@ -19,17 +19,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ownedInvoiceWhere } from "@/lib/billing/authorization";
-import type { BillingInvoiceStatus } from "@/lib/billing/lifecycle";
+import {
+  daysPastDue,
+  isInvoiceOverdue,
+  isOpenInvoiceStatus,
+  type BillingInvoiceStatus,
+} from "@/lib/billing/lifecycle";
 import { formatDate, formatMinorMoney } from "@/lib/format";
 import { prisma } from "@/lib/db";
 import { cx } from "@/lib/utils/cx";
 import { requireSession } from "@/lib/require-session";
-
-function startOfDay(date: Date) {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
@@ -86,12 +85,8 @@ function KpiCard({
 export default async function DashboardPage() {
   const session = await requireSession();
   const now = new Date();
-  const today = startOfDay(now);
-  const inSevenDays = addDays(today, 7);
-  const aging30 = addDays(today, -30);
-  const aging60 = addDays(today, -60);
+  const inSevenDays = addDays(now, 7);
   const owned = ownedInvoiceWhere(session.userId);
-  const openStatusList: BillingInvoiceStatus[] = ["unpaid", "sent"];
 
   // Two Turso round-trips instead of ten parallel aggregates (each still pays libSQL latency).
   const [clientCount, invoices] = await Promise.all([
@@ -128,33 +123,34 @@ export default async function DashboardPage() {
   const upcomingDue: typeof invoices = [];
 
   for (const inv of invoices) {
-    if (inv.status === "unpaid") {
+    const status = inv.status as BillingInvoiceStatus;
+
+    if (status === "unpaid") {
       unpaidCount += 1;
       unpaidAmountMinor += inv.totalMinor;
-    } else if (inv.status === "paid") {
+    } else if (status === "paid") {
       paidCount += 1;
       paidAmountMinor += inv.totalMinor;
     }
 
-    const isOpen = openStatusList.includes(inv.status as BillingInvoiceStatus);
-    if (!isOpen) {
-      continue;
-    }
-
-    if (inv.dueDate < today) {
+    if (isInvoiceOverdue(status, inv.dueDate, now)) {
       overdueCount += 1;
       overdueAmountMinor += inv.totalMinor;
-      if (inv.dueDate >= aging30) {
+      const days = daysPastDue(inv.dueDate, now);
+      if (days <= 30) {
         aging0Count += 1;
         aging0Amount += inv.totalMinor;
-      } else if (inv.dueDate >= aging60) {
+      } else if (days <= 60) {
         aging31Count += 1;
         aging31Amount += inv.totalMinor;
       } else {
         aging61Count += 1;
         aging61Amount += inv.totalMinor;
       }
-    } else if (inv.dueDate < inSevenDays) {
+      continue;
+    }
+
+    if (isOpenInvoiceStatus(status) && !isInvoiceOverdue(status, inv.dueDate, now) && inv.dueDate < inSevenDays) {
       upcomingDue.push(inv);
     }
   }

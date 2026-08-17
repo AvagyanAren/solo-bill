@@ -1,16 +1,4 @@
-function isLibsqlConnectionString(raw: string | undefined): boolean {
-  if (!raw) {
-    return false;
-  }
-  const t = raw.trim();
-  if (t.startsWith("libsql://")) {
-    return true;
-  }
-  if (t.startsWith("wss://") || t.startsWith("https://")) {
-    return t.includes("libsql");
-  }
-  return false;
-}
+import { isLibsqlConnectionString } from "@/lib/db-url";
 
 /** Returns a user-safe config error for hosted (Vercel) runtime, or null if env looks OK. */
 export function getHostedDatabaseConfigError(): string | null {
@@ -42,22 +30,31 @@ export function isNextNavigationError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
+  // Next.js digest-based check when available
+  const digest = (error as { digest?: string }).digest;
+  if (typeof digest === "string" && (digest.startsWith("NEXT_REDIRECT") || digest.startsWith("NEXT_NOT_FOUND"))) {
+    return true;
+  }
   return error.message === "NEXT_REDIRECT" || error.message === "NEXT_NOT_FOUND";
 }
 
 export function toAuthActionErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("Vercel: use a remote libSQL database")) {
-    return getHostedDatabaseConfigError() ?? message;
+    return getHostedDatabaseConfigError() ?? "Database is not configured for this deployment.";
   }
   if (message.includes("AUTH_SECRET must be set")) {
-    return getProductionAuthConfigError() ?? message;
+    return getProductionAuthConfigError() ?? "Server auth is not configured.";
   }
   if (message.includes("DATABASE_URL is required for libsql")) {
-    return "DATABASE_URL is not set for the libSQL connection.";
+    return "Database URL is not configured.";
   }
-  if (message.includes("no such table") || message.includes("SQLITE_ERROR") || message.includes("SQLITE_UNKNOWN")) {
-    return "Database schema is missing on Turso. Run `npx prisma db push` with your Turso DATABASE_URL and TURSO_AUTH_TOKEN, then try again.";
+  if (
+    message.includes("no such table") ||
+    message.includes("SQLITE_ERROR") ||
+    message.includes("SQLITE_UNKNOWN")
+  ) {
+    return "Database is not ready yet. Try again in a moment, or contact the site owner.";
   }
-  return "Sign-in failed due to a server error. Check Vercel env (DATABASE_URL, TURSO_AUTH_TOKEN, AUTH_SECRET) and Runtime Logs.";
+  return "Something went wrong. Please try again.";
 }

@@ -16,7 +16,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ownedInvoiceWhere } from "@/lib/billing/authorization";
-import { INVOICE_STATUSES, type BillingInvoiceStatus } from "@/lib/billing/lifecycle";
+import {
+  INVOICE_STATUSES,
+  OPEN_INVOICE_STATUSES,
+  prismaOverdueDueDateFilter,
+  type BillingInvoiceStatus,
+} from "@/lib/billing/lifecycle";
 import { formatDate, formatMinorMoney } from "@/lib/format";
 import { formatPeriodToolbarLabel, resolveInvoiceDateRange } from "@/lib/invoice-period";
 import { prisma } from "@/lib/db";
@@ -71,8 +76,8 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
 
   const statusFilter = overdue
     ? {
-        status: { in: ["unpaid", "sent"] as BillingInvoiceStatus[] },
-        dueDate: { lt: now },
+        status: { in: [...OPEN_INVOICE_STATUSES] },
+        dueDate: prismaOverdueDueDateFilter(now),
       }
     : status
       ? { status: status as BillingInvoiceStatus }

@@ -65,6 +65,53 @@ export function isPastDueDate(dueDate: Date, now: Date = new Date()): boolean {
   return end < now;
 }
 
+/** Open invoices that can become overdue (sent or unpaid). */
+export const OPEN_INVOICE_STATUSES = ["unpaid", "sent"] as const satisfies readonly BillingInvoiceStatus[];
+
+export type OpenInvoiceStatus = (typeof OPEN_INVOICE_STATUSES)[number];
+
+export function isOpenInvoiceStatus(status: string): status is OpenInvoiceStatus {
+  return (OPEN_INVOICE_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Canonical overdue check — matches status badges.
+ * An open invoice is overdue after the calendar due day has ended.
+ */
+export function isInvoiceOverdue(
+  status: BillingInvoiceStatus,
+  dueDate: Date,
+  now: Date = new Date(),
+): boolean {
+  return isOpenInvoiceStatus(status) && isPastDueDate(dueDate, now);
+}
+
+/** Start of local day for `now` — Prisma overdue filter uses `dueDate < this`. */
+export function overdueDueDateCutoff(now: Date = new Date()): Date {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+/**
+ * Prisma `dueDate` filter aligned with {@link isPastDueDate} when due dates are stored
+ * at local midnight of the due day.
+ */
+export function prismaOverdueDueDateFilter(now: Date = new Date()): { lt: Date } {
+  return { lt: overdueDueDateCutoff(now) };
+}
+
+/** Whole days past the due calendar day (0 if not yet overdue). */
+export function daysPastDue(dueDate: Date, now: Date = new Date()): number {
+  if (!isPastDueDate(dueDate, now)) {
+    return 0;
+  }
+  const dueDay = new Date(dueDate);
+  dueDay.setHours(0, 0, 0, 0);
+  const today = overdueDueDateCutoff(now);
+  return Math.floor((today.getTime() - dueDay.getTime()) / (24 * 60 * 60 * 1000));
+}
+
 /**
  * Manual reminders: unpaid invoices, or overdue (past-due sent/unpaid).
  * Draft, paid, and void are never eligible.

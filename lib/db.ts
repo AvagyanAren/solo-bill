@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { PrismaClient } from "@/app/generated/prisma/client";
+import { isLibsqlConnectionString } from "@/lib/db-url";
 
 const require = createRequire(import.meta.url);
 
@@ -13,19 +14,6 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefi
  * Remote libSQL (Turso, etc.) — use on Vercel. Local `file:` DB uses better-sqlite3 (lazy-loaded).
  * Set `DATABASE_URL=libsql://...` and `TURSO_AUTH_TOKEN` in the host env.
  */
-function isLibsqlConnectionString(raw: string | undefined): boolean {
-  if (!raw) {
-    return false;
-  }
-  const t = raw.trim();
-  if (t.startsWith("libsql://")) {
-    return true;
-  }
-  if (t.startsWith("wss://") || t.startsWith("https://")) {
-    return t.includes("libsql");
-  }
-  return false;
-}
 
 /**
  * Resolve `DATABASE_URL` to an absolute path. Default uses `dev.db` next to package.json.

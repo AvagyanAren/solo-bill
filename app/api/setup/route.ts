@@ -1,7 +1,7 @@
-import { execSync } from "node:child_process";
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { bootstrapRemoteDatabase } from "@/lib/remote-setup";
 import { seedDemoUser } from "@/lib/seed-demo-user";
 
 function allowSetup(): boolean {
@@ -9,24 +9,38 @@ function allowSetup(): boolean {
   return flag === "1" || flag === "true" || flag === "yes";
 }
 
-/** One-time hosted DB bootstrap: prisma db push + demo user seed. */
+/**
+ * Explicit one-shot hosted DB bootstrap (schema + demo user).
+ * Prefer this over relying on first login. Disable `SOLOBILL_ALLOW_SETUP` after use.
+ */
 export async function POST() {
   if (!allowSetup()) {
     return NextResponse.json(
-      { error: "Setup disabled. Set SOLOBILL_ALLOW_SETUP=1 on Vercel, redeploy, POST again, then remove the flag." },
+      {
+        error:
+          "Setup disabled. Set SOLOBILL_ALLOW_SETUP=1 on Vercel (Production), redeploy, POST once, then remove the flag.",
+      },
       { status: 403 },
     );
   }
 
   try {
-    execSync("npx prisma db push", { stdio: "pipe", env: process.env });
-    const demo = await seedDemoUser();
+    const bootstrapped = await bootstrapRemoteDatabase();
+    if (!bootstrapped) {
+      // Local / non-Turso: still upsert demo user against the configured DB.
+      await seedDemoUser();
+    }
     const userCount = await prisma.user.count();
+    const demo = await prisma.user.findUnique({
+      where: { email: "demo@solobill.local" },
+      select: { email: true },
+    });
 
     return NextResponse.json({
       ok: true,
+      bootstrapped,
       userCount,
-      demoUser: demo.email,
+      demoUser: demo?.email ?? null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

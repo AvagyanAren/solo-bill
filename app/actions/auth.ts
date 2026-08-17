@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
-import { ensureRemoteDatabaseReady } from "@/lib/remote-setup";
+import { withRemoteDbRetry } from "@/lib/remote-setup";
 import {
   getHostedDatabaseConfigError,
   getProductionAuthConfigError,
@@ -47,20 +47,24 @@ export async function registerAction(
       return { error: msg };
     }
 
-    const existing = await prisma.user.findUnique({
-      where: { email: parsed.data.email },
-    });
+    const existing = await withRemoteDbRetry(() =>
+      prisma.user.findUnique({
+        where: { email: parsed.data.email },
+      }),
+    );
     if (existing) {
       return { error: "An account with this email already exists." };
     }
 
     const hashed = await hashPassword(parsed.data.password);
-    const user = await prisma.user.create({
-      data: {
-        email: parsed.data.email,
-        password: hashed,
-      },
-    });
+    const user = await withRemoteDbRetry(() =>
+      prisma.user.create({
+        data: {
+          email: parsed.data.email,
+          password: hashed,
+        },
+      }),
+    );
 
     await createSession(user.id, user.email);
     redirect("/dashboard");
@@ -93,20 +97,11 @@ export async function loginAction(
       return { error: msg };
     }
 
-    let user;
-    try {
-      user = await prisma.user.findUnique({
+    const user = await withRemoteDbRetry(() =>
+      prisma.user.findUnique({
         where: { email: parsed.data.email },
-      });
-    } catch (dbError) {
-      if (await ensureRemoteDatabaseReady(dbError)) {
-        user = await prisma.user.findUnique({
-          where: { email: parsed.data.email },
-        });
-      } else {
-        throw dbError;
-      }
-    }
+      }),
+    );
     if (!user) {
       return { error: "Invalid email or password." };
     }
