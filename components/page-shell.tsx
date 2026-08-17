@@ -5,16 +5,25 @@ import { cx } from "@/lib/utils/cx";
 type PageContainerProps = {
   children: ReactNode;
   className?: string;
+  "aria-busy"?: boolean | "true" | "false";
+  "aria-live"?: "off" | "assertive" | "polite";
 };
 
 /** Shared page width + spacing for dashboard and invoice surfaces. */
-export function PageContainer({ children, className }: PageContainerProps) {
+export function PageContainer({
+  children,
+  className,
+  "aria-busy": ariaBusy,
+  "aria-live": ariaLive,
+}: PageContainerProps) {
   return (
     <div
       className={cx(
         "mx-auto w-full max-w-container px-4 py-5 sm:px-6 sm:py-6 lg:px-8",
         className,
       )}
+      aria-busy={ariaBusy}
+      aria-live={ariaLive}
     >
       {children}
     </div>

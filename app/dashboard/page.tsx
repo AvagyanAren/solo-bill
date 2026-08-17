@@ -92,100 +92,77 @@ export default async function DashboardPage() {
   const aging60 = addDays(today, -60);
   const owned = ownedInvoiceWhere(session.userId);
   const openStatusList: BillingInvoiceStatus[] = ["unpaid", "sent"];
-  const openStatusFilter = { status: { in: openStatusList } };
 
-  const [
-    clientCount,
-    unpaidAgg,
-    paidAgg,
-    overdueCount,
-    overdueAgg,
-    aging0to30,
-    aging31to60,
-    aging61plus,
-    upcomingDue,
-    recentInvoices,
-  ] = await Promise.all([
+  // Two Turso round-trips instead of ten parallel aggregates (each still pays libSQL latency).
+  const [clientCount, invoices] = await Promise.all([
     prisma.client.count({ where: { userId: session.userId } }),
-    prisma.invoice.aggregate({
-      where: { ...owned, status: "unpaid" },
-      _sum: { totalMinor: true },
-      _count: true,
-    }),
-    prisma.invoice.aggregate({
-      where: { ...owned, status: "paid" },
-      _sum: { totalMinor: true },
-      _count: true,
-    }),
-    prisma.invoice.count({
-      where: {
-        ...owned,
-        ...openStatusFilter,
-        dueDate: { lt: today },
-      },
-    }),
-    prisma.invoice.aggregate({
-      where: {
-        ...owned,
-        ...openStatusFilter,
-        dueDate: { lt: today },
-      },
-      _sum: { totalMinor: true },
-    }),
-    prisma.invoice.aggregate({
-      where: {
-        ...owned,
-        ...openStatusFilter,
-        dueDate: { gte: aging30, lt: today },
-      },
-      _sum: { totalMinor: true },
-      _count: true,
-    }),
-    prisma.invoice.aggregate({
-      where: {
-        ...owned,
-        ...openStatusFilter,
-        dueDate: { gte: aging60, lt: aging30 },
-      },
-      _sum: { totalMinor: true },
-      _count: true,
-    }),
-    prisma.invoice.aggregate({
-      where: {
-        ...owned,
-        ...openStatusFilter,
-        dueDate: { lt: aging60 },
-      },
-      _sum: { totalMinor: true },
-      _count: true,
-    }),
-    prisma.invoice.findMany({
-      where: {
-        ...owned,
-        ...openStatusFilter,
-        dueDate: { gte: today, lt: inSevenDays },
-      },
-      include: { client: true },
-      orderBy: { dueDate: "asc" },
-      take: 5,
-    }),
     prisma.invoice.findMany({
       where: owned,
-      include: { client: true },
+      select: {
+        id: true,
+        title: true,
+        invoiceNumber: true,
+        status: true,
+        dueDate: true,
+        totalMinor: true,
+        currency: true,
+        createdAt: true,
+        client: { select: { name: true } },
+      },
       orderBy: { createdAt: "desc" },
-      take: 5,
     }),
   ]);
 
-  const outstandingAmountMinor = unpaidAgg._sum.totalMinor ?? 0;
-  const paidAmountMinor = paidAgg._sum.totalMinor ?? 0;
-  const overdueAmountMinor = overdueAgg._sum?.totalMinor ?? 0;
-  const aging0Count = typeof aging0to30._count === "number" ? aging0to30._count : 0;
-  const aging31Count = typeof aging31to60._count === "number" ? aging31to60._count : 0;
-  const aging61Count = typeof aging61plus._count === "number" ? aging61plus._count : 0;
-  const aging0Amount = aging0to30._sum?.totalMinor ?? 0;
-  const aging31Amount = aging31to60._sum?.totalMinor ?? 0;
-  const aging61Amount = aging61plus._sum?.totalMinor ?? 0;
+  let unpaidCount = 0;
+  let unpaidAmountMinor = 0;
+  let paidCount = 0;
+  let paidAmountMinor = 0;
+  let overdueCount = 0;
+  let overdueAmountMinor = 0;
+  let aging0Count = 0;
+  let aging0Amount = 0;
+  let aging31Count = 0;
+  let aging31Amount = 0;
+  let aging61Count = 0;
+  let aging61Amount = 0;
+  const upcomingDue: typeof invoices = [];
+
+  for (const inv of invoices) {
+    if (inv.status === "unpaid") {
+      unpaidCount += 1;
+      unpaidAmountMinor += inv.totalMinor;
+    } else if (inv.status === "paid") {
+      paidCount += 1;
+      paidAmountMinor += inv.totalMinor;
+    }
+
+    const isOpen = openStatusList.includes(inv.status as BillingInvoiceStatus);
+    if (!isOpen) {
+      continue;
+    }
+
+    if (inv.dueDate < today) {
+      overdueCount += 1;
+      overdueAmountMinor += inv.totalMinor;
+      if (inv.dueDate >= aging30) {
+        aging0Count += 1;
+        aging0Amount += inv.totalMinor;
+      } else if (inv.dueDate >= aging60) {
+        aging31Count += 1;
+        aging31Amount += inv.totalMinor;
+      } else {
+        aging61Count += 1;
+        aging61Amount += inv.totalMinor;
+      }
+    } else if (inv.dueDate < inSevenDays) {
+      upcomingDue.push(inv);
+    }
+  }
+
+  upcomingDue.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+  const upcomingDueLimited = upcomingDue.slice(0, 5);
+  const recentInvoices = invoices.slice(0, 5);
+  const outstandingAmountMinor = unpaidAmountMinor;
 
   return (
     <PageShell
@@ -207,7 +184,7 @@ export default async function DashboardPage() {
           <KpiCard
             href="/dashboard/invoices?status=unpaid"
             title="Outstanding"
-            description={`${unpaidAgg._count} unpaid invoice${unpaidAgg._count === 1 ? "" : "s"}`}
+            description={`${unpaidCount} unpaid invoice${unpaidCount === 1 ? "" : "s"}`}
             value={formatMinorMoney(outstandingAmountMinor)}
             icon={CurrencyDollar}
             color="brand"
@@ -229,7 +206,7 @@ export default async function DashboardPage() {
           <KpiCard
             href="/dashboard/invoices?status=paid"
             title="Collected"
-            description={`${paidAgg._count} paid invoice${paidAgg._count === 1 ? "" : "s"}`}
+            description={`${paidCount} paid invoice${paidCount === 1 ? "" : "s"}`}
             value={formatMinorMoney(paidAmountMinor)}
             icon={CheckCircle}
             color="success"
@@ -302,11 +279,11 @@ export default async function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {upcomingDue.length === 0 ? (
+            {upcomingDueLimited.length === 0 ? (
               <p className="text-sm text-tertiary">Nothing due in the next week.</p>
             ) : (
               <ul className="divide-y divide-secondary">
-                {upcomingDue.map((inv) => (
+                {upcomingDueLimited.map((inv) => (
                   <li
                     key={inv.id}
                     className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"

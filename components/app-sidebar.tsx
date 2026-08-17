@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { LayoutLeft, LogOut01 } from "@untitledui/icons";
@@ -32,6 +32,19 @@ function getServerCollapsedState() {
   return false;
 }
 
+function NavLinkPendingCue() {
+  const { pending } = useLinkStatus();
+  if (!pending) {
+    return null;
+  }
+  return (
+    <span
+      className="ml-auto size-1.5 shrink-0 animate-pulse rounded-full bg-current opacity-70"
+      aria-hidden
+    />
+  );
+}
+
 type AppNavLinksProps = {
   collapsed?: boolean;
   onNavigate?: () => void;
@@ -54,6 +67,7 @@ export function AppNavLinks({ collapsed = false, onNavigate, navId }: AppNavLink
           <Link
             key={href}
             href={href}
+            prefetch
             title={collapsed ? label : undefined}
             aria-current={active ? "page" : undefined}
             onClick={onNavigate}
@@ -67,6 +81,7 @@ export function AppNavLinks({ collapsed = false, onNavigate, navId }: AppNavLink
           >
             <Icon className="size-5 shrink-0" aria-hidden />
             {showLabels ? <span className="truncate">{label}</span> : null}
+            {showLabels ? <NavLinkPendingCue /> : null}
           </Link>
         );
       })}
