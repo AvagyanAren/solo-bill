@@ -140,17 +140,113 @@ function createFileSqlitePrismaClient(): PrismaClient {
   });
 }
 
+function debugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+  runId = "vercel-build-repro",
+) {
+  const payload = {
+    sessionId: "4b89a7",
+    runId,
+    hypothesisId,
+    location,
+    message,
+    data,
+    timestamp: Date.now(),
+  };
+  // #region agent log
+  try {
+    fs.appendFileSync(
+      path.join(process.cwd(), "debug-4b89a7.log"),
+      `${JSON.stringify(payload)}\n`,
+    );
+  } catch {
+    /* ignore */
+  }
+  fetch("http://127.0.0.1:7318/ingest/59523aca-1b99-4b99-a7c5-67eb14821bc1", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "4b89a7" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+  // #endregion
+}
+
 function createPrismaClient(): PrismaClient {
-  if (isLibsqlConnectionString(process.env.DATABASE_URL)) {
+  const rawUrl = process.env.DATABASE_URL;
+  const isLibsql = isLibsqlConnectionString(rawUrl);
+  const vercel = Boolean(process.env.VERCEL);
+  const hasToken = Boolean(process.env["TURSO_AUTH_TOKEN"]?.trim());
+  const urlKind = !rawUrl
+    ? "missing"
+    : isLibsql
+      ? "libsql"
+      : rawUrl.trim().startsWith("file:")
+        ? "file"
+        : "other";
+  debugLog("A", "lib/db.ts:createPrismaClient", "prisma client init branch decision", {
+    vercel,
+    isLibsql,
+    hasToken,
+    urlKind,
+    phase: process.env.NEXT_PHASE ?? null,
+  });
+  if (isLibsql) {
+    debugLog("E", "lib/db.ts:createPrismaClient:libsql", "taking libsql branch", { hasToken });
     return createLibsqlPrismaClient();
   }
-  if (process.env.VERCEL) {
+  if (vercel) {
+    debugLog("A", "lib/db.ts:createPrismaClient:vercel-guard", "throwing vercel remote-db guard", {
+      urlKind,
+      hasToken,
+    });
     throw new Error(
       "Vercel: use a remote libSQL database. Set DATABASE_URL=libsql://... and TURSO_AUTH_TOKEN in the Vercel project. Then run `npx prisma db push` against that URL. See .env.example.",
     );
   }
+  debugLog("D", "lib/db.ts:createPrismaClient:file-sqlite", "taking local file sqlite branch", {
+    urlKind,
+  });
   return createFileSqlitePrismaClient();
 }
 
-// Reuse one client per server instance (important for Vercel + remote libSQL).
-export const prisma = (globalForPrisma.prisma ??= createPrismaClient());
+function getPrismaClient(): PrismaClient {
+  if (!globalForPrisma.prisma) {
+    debugLog(
+      "B",
+      "lib/db.ts:getPrismaClient",
+      "lazy creating prisma on first access",
+      {
+        vercel: Boolean(process.env.VERCEL),
+        hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+        phase: process.env.NEXT_PHASE ?? null,
+      },
+      "post-fix",
+    );
+    globalForPrisma.prisma = createPrismaClient();
+  }
+  return globalForPrisma.prisma;
+}
+
+debugLog(
+  "B",
+  "lib/db.ts:module-top-level",
+  "lib/db module evaluating; exporting lazy prisma proxy",
+  {
+    vercel: Boolean(process.env.VERCEL),
+    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+    phase: process.env.NEXT_PHASE ?? null,
+  },
+  "post-fix",
+);
+
+// Lazy proxy so Next.js can import route modules during "Collecting page data"
+// without connecting to the database. The Vercel remote-DB guard still runs on first use.
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
