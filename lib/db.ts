@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { PrismaClient } from "@/app/generated/prisma/client";
 
+import { debugLog } from "@/lib/debug-log";
+
 const require = createRequire(import.meta.url);
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
@@ -140,39 +142,6 @@ function createFileSqlitePrismaClient(): PrismaClient {
   });
 }
 
-function debugLog(
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-  runId = "vercel-build-repro",
-) {
-  const payload = {
-    sessionId: "4b89a7",
-    runId,
-    hypothesisId,
-    location,
-    message,
-    data,
-    timestamp: Date.now(),
-  };
-  // #region agent log
-  try {
-    fs.appendFileSync(
-      path.join(process.cwd(), "debug-4b89a7.log"),
-      `${JSON.stringify(payload)}\n`,
-    );
-  } catch {
-    /* ignore */
-  }
-  fetch("http://127.0.0.1:7318/ingest/59523aca-1b99-4b99-a7c5-67eb14821bc1", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "4b89a7" },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-  // #endregion
-}
-
 function createPrismaClient(): PrismaClient {
   const rawUrl = process.env.DATABASE_URL;
   const isLibsql = isLibsqlConnectionString(rawUrl);
@@ -191,23 +160,23 @@ function createPrismaClient(): PrismaClient {
     hasToken,
     urlKind,
     phase: process.env.NEXT_PHASE ?? null,
-  });
+  }, "vercel-build-repro");
   if (isLibsql) {
-    debugLog("E", "lib/db.ts:createPrismaClient:libsql", "taking libsql branch", { hasToken });
+    debugLog("E", "lib/db.ts:createPrismaClient:libsql", "taking libsql branch", { hasToken }, "vercel-build-repro");
     return createLibsqlPrismaClient();
   }
   if (vercel) {
     debugLog("A", "lib/db.ts:createPrismaClient:vercel-guard", "throwing vercel remote-db guard", {
       urlKind,
       hasToken,
-    });
+    }, "vercel-build-repro");
     throw new Error(
       "Vercel: use a remote libSQL database. Set DATABASE_URL=libsql://... and TURSO_AUTH_TOKEN in the Vercel project. Then run `npx prisma db push` against that URL. See .env.example.",
     );
   }
   debugLog("D", "lib/db.ts:createPrismaClient:file-sqlite", "taking local file sqlite branch", {
     urlKind,
-  });
+  }, "vercel-build-repro");
   return createFileSqlitePrismaClient();
 }
 
