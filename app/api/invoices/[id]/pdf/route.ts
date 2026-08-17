@@ -8,25 +8,6 @@ import { requireSession } from "@/lib/require-session";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-// #region agent log
-fetch("http://127.0.0.1:7318/ingest/59523aca-1b99-4b99-a7c5-67eb14821bc1", {
-  method: "POST",
-  headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "4b89a7" },
-  body: JSON.stringify({
-    sessionId: "4b89a7",
-    runId: "vercel-build-repro",
-    hypothesisId: "C",
-    location: "app/api/invoices/[id]/pdf/route.ts:module",
-    message: "pdf route module loaded (imports prisma)",
-    data: {
-      vercel: Boolean(process.env.VERCEL),
-      phase: process.env.NEXT_PHASE ?? null,
-    },
-    timestamp: Date.now(),
-  }),
-}).catch(() => {});
-// #endregion
-
 export async function GET(_request: Request, context: RouteContext) {
   const session = await requireSession();
   const { id } = await context.params;
