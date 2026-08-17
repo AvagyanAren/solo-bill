@@ -5,8 +5,6 @@ import { fileURLToPath } from "node:url";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { PrismaClient } from "@/app/generated/prisma/client";
 
-import { debugLog } from "@/lib/debug-log";
-
 const require = createRequire(import.meta.url);
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
@@ -143,72 +141,23 @@ function createFileSqlitePrismaClient(): PrismaClient {
 }
 
 function createPrismaClient(): PrismaClient {
-  const rawUrl = process.env.DATABASE_URL;
-  const isLibsql = isLibsqlConnectionString(rawUrl);
-  const vercel = Boolean(process.env.VERCEL);
-  const hasToken = Boolean(process.env["TURSO_AUTH_TOKEN"]?.trim());
-  const urlKind = !rawUrl
-    ? "missing"
-    : isLibsql
-      ? "libsql"
-      : rawUrl.trim().startsWith("file:")
-        ? "file"
-        : "other";
-  debugLog("A", "lib/db.ts:createPrismaClient", "prisma client init branch decision", {
-    vercel,
-    isLibsql,
-    hasToken,
-    urlKind,
-    phase: process.env.NEXT_PHASE ?? null,
-  }, "vercel-build-repro");
-  if (isLibsql) {
-    debugLog("E", "lib/db.ts:createPrismaClient:libsql", "taking libsql branch", { hasToken }, "vercel-build-repro");
+  if (isLibsqlConnectionString(process.env.DATABASE_URL)) {
     return createLibsqlPrismaClient();
   }
-  if (vercel) {
-    debugLog("A", "lib/db.ts:createPrismaClient:vercel-guard", "throwing vercel remote-db guard", {
-      urlKind,
-      hasToken,
-    }, "vercel-build-repro");
+  if (process.env.VERCEL) {
     throw new Error(
       "Vercel: use a remote libSQL database. Set DATABASE_URL=libsql://... and TURSO_AUTH_TOKEN in the Vercel project. Then run `npx prisma db push` against that URL. See .env.example.",
     );
   }
-  debugLog("D", "lib/db.ts:createPrismaClient:file-sqlite", "taking local file sqlite branch", {
-    urlKind,
-  }, "vercel-build-repro");
   return createFileSqlitePrismaClient();
 }
 
 function getPrismaClient(): PrismaClient {
   if (!globalForPrisma.prisma) {
-    debugLog(
-      "B",
-      "lib/db.ts:getPrismaClient",
-      "lazy creating prisma on first access",
-      {
-        vercel: Boolean(process.env.VERCEL),
-        hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-        phase: process.env.NEXT_PHASE ?? null,
-      },
-      "post-fix",
-    );
     globalForPrisma.prisma = createPrismaClient();
   }
   return globalForPrisma.prisma;
 }
-
-debugLog(
-  "B",
-  "lib/db.ts:module-top-level",
-  "lib/db module evaluating; exporting lazy prisma proxy",
-  {
-    vercel: Boolean(process.env.VERCEL),
-    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-    phase: process.env.NEXT_PHASE ?? null,
-  },
-  "post-fix",
-);
 
 // Lazy proxy so Next.js can import route modules during "Collecting page data"
 // without connecting to the database. The Vercel remote-DB guard still runs on first use.

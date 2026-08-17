@@ -3,7 +3,6 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { debugErrorMessage, debugLog } from "@/lib/debug-log";
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { ensureRemoteDatabaseReady } from "@/lib/remote-setup";
@@ -79,21 +78,8 @@ export async function loginAction(
   formData: FormData,
 ): Promise<AuthFormState> {
   const email = normalizeEmail(formData);
-  debugLog("A", "app/actions/auth.ts:loginAction", "login action started", {
-    hasEmail: Boolean(email),
-    vercel: Boolean(process.env.VERCEL),
-    nodeEnv: process.env.NODE_ENV ?? null,
-    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-    hasTursoToken: Boolean(process.env.TURSO_AUTH_TOKEN?.trim()),
-    hasAuthSecret: Boolean(process.env.AUTH_SECRET?.trim()),
-    authSecretLength: process.env.AUTH_SECRET?.trim().length ?? 0,
-  });
-
   const configError = getHostedDatabaseConfigError() ?? getProductionAuthConfigError();
   if (configError) {
-    debugLog("A", "app/actions/auth.ts:loginAction", "hosted config validation failed", {
-      message: configError,
-    });
     return { error: configError };
   }
 
@@ -104,13 +90,9 @@ export async function loginAction(
     });
     if (!parsed.success) {
       const msg = parsed.error.issues[0]?.message ?? "Check your email and password.";
-      debugLog("E", "app/actions/auth.ts:loginAction", "validation failed", { message: msg });
       return { error: msg };
     }
 
-    debugLog("B", "app/actions/auth.ts:loginAction", "before prisma.user.findUnique", {
-      emailDomain: parsed.data.email.split("@")[1] ?? null,
-    });
     let user;
     try {
       user = await prisma.user.findUnique({
@@ -125,31 +107,21 @@ export async function loginAction(
         throw dbError;
       }
     }
-    debugLog("B", "app/actions/auth.ts:loginAction", "after prisma.user.findUnique", {
-      userFound: Boolean(user),
-    });
     if (!user) {
       return { error: "Invalid email or password." };
     }
 
     const ok = await verifyPassword(parsed.data.password, user.password);
-    debugLog("C", "app/actions/auth.ts:loginAction", "password verified", { ok });
     if (!ok) {
       return { error: "Invalid email or password." };
     }
 
-    debugLog("C", "app/actions/auth.ts:loginAction", "before createSession", {});
     await createSession(user.id, user.email);
-    debugLog("C", "app/actions/auth.ts:loginAction", "after createSession", {});
     redirect("/dashboard");
   } catch (error) {
     if (isNextNavigationError(error)) {
       throw error;
     }
-    debugLog("D", "app/actions/auth.ts:loginAction", "login action threw", {
-      error: debugErrorMessage(error),
-      errorName: error instanceof Error ? error.name : typeof error,
-    });
     console.error("[loginAction] error:", error);
     return { error: toAuthActionErrorMessage(error) };
   }
