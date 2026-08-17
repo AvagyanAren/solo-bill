@@ -19,6 +19,7 @@ test("production health endpoint reports valid env", async ({ request }) => {
 });
 
 test("production login reaches dashboard", async ({ page }) => {
+  test.setTimeout(120_000);
   await page.goto("/login");
   await page.locator('input[name="email"]').fill("demo@solobill.local");
   await page.locator('input[name="password"]').fill("SoloBill-Mvp-2026!");

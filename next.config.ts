@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
     "@libsql/client",
     "pdfkit",
   ],
+  outputFileTracingIncludes: {
+    "/api/**/*": ["./prisma/migrations/**/*"],
+    "/**/*": ["./prisma/migrations/**/*"],
+  },
 };
 
 export default nextConfig;

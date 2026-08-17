@@ -56,7 +56,7 @@ export function toAuthActionErrorMessage(error: unknown): string {
   if (message.includes("DATABASE_URL is required for libsql")) {
     return "DATABASE_URL is not set for the libSQL connection.";
   }
-  if (message.includes("no such table") || message.includes("SQLITE_ERROR")) {
+  if (message.includes("no such table") || message.includes("SQLITE_ERROR") || message.includes("SQLITE_UNKNOWN")) {
     return "Database schema is missing on Turso. Run `npx prisma db push` with your Turso DATABASE_URL and TURSO_AUTH_TOKEN, then try again.";
   }
   return "Sign-in failed due to a server error. Check Vercel env (DATABASE_URL, TURSO_AUTH_TOKEN, AUTH_SECRET) and Runtime Logs.";

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { ensureRemoteDatabaseReady } from "@/lib/remote-setup";
 
 function databaseUrlKind(raw: string | undefined): "missing" | "libsql" | "file" | "other" {
   if (!raw?.trim()) {
@@ -43,7 +44,12 @@ export async function GET() {
     userCount = await prisma.user.count();
   } catch (error) {
     dbError = error instanceof Error ? error.message : String(error);
-    issues.push("Database query failed: " + dbError);
+    if (await ensureRemoteDatabaseReady(error)) {
+      userCount = await prisma.user.count();
+      dbError = null;
+    } else {
+      issues.push("Database query failed: " + dbError);
+    }
   }
 
   return NextResponse.json({
