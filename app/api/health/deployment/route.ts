@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { prisma } from "@/lib/db";
+
 function databaseUrlKind(raw: string | undefined): "missing" | "libsql" | "file" | "other" {
   if (!raw?.trim()) {
     return "missing";
@@ -35,6 +37,15 @@ export async function GET() {
     issues.push("AUTH_SECRET must be at least 32 characters in production.");
   }
 
+  let userCount: number | null = null;
+  let dbError: string | null = null;
+  try {
+    userCount = await prisma.user.count();
+  } catch (error) {
+    dbError = error instanceof Error ? error.message : String(error);
+    issues.push("Database query failed: " + dbError);
+  }
+
   return NextResponse.json({
     ok: issues.length === 0,
     issues,
@@ -49,6 +60,10 @@ export async function GET() {
       hasTursoToken: Boolean(process.env.TURSO_AUTH_TOKEN?.trim()),
       hasAuthSecret: authSecret.length >= 32,
       authSecretLength: authSecret.length,
+    },
+    database: {
+      userCount,
+      dbError,
     },
   });
 }
