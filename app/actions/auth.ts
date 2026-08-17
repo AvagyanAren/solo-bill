@@ -6,6 +6,7 @@ import { z } from "zod";
 import { debugErrorMessage, debugLog } from "@/lib/debug-log";
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { ensureRemoteDatabaseReady } from "@/lib/remote-setup";
 import {
   getHostedDatabaseConfigError,
   getProductionAuthConfigError,
@@ -110,9 +111,20 @@ export async function loginAction(
     debugLog("B", "app/actions/auth.ts:loginAction", "before prisma.user.findUnique", {
       emailDomain: parsed.data.email.split("@")[1] ?? null,
     });
-    const user = await prisma.user.findUnique({
-      where: { email: parsed.data.email },
-    });
+    let user;
+    try {
+      user = await prisma.user.findUnique({
+        where: { email: parsed.data.email },
+      });
+    } catch (dbError) {
+      if (await ensureRemoteDatabaseReady(dbError)) {
+        user = await prisma.user.findUnique({
+          where: { email: parsed.data.email },
+        });
+      } else {
+        throw dbError;
+      }
+    }
     debugLog("B", "app/actions/auth.ts:loginAction", "after prisma.user.findUnique", {
       userFound: Boolean(user),
     });

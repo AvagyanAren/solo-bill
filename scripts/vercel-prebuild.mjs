@@ -26,9 +26,6 @@ function main() {
 
   console.log("[vercel-prebuild] pushing schema to Turso/libSQL…");
   run("npx prisma db push");
-
-  console.log("[vercel-prebuild] seeding demo user…");
-  run("npx --yes tsx scripts/seed-dev-user.ts");
 }
 
 main();

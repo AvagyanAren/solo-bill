@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "npm run rebuild:native && next dev",
     "dev:fast": "next dev",
-    "build": "prisma generate && node scripts/vercel-prebuild.mjs && next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -37,6 +37,7 @@
     "next-themes": "^0.4.6",
     "openai": "^6.34.0",
     "pdfkit": "^0.19.1",
+    "prisma": "^7.7.0",
     "react": "19.2.4",
     "react-aria": "^3.51.0",
     "react-aria-components": "^1.20.0",
@@ -60,7 +61,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "postcss": "^8.5.26",
-    "prisma": "^7.7.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"
