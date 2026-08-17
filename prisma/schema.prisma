@@ -10,35 +10,205 @@ datasource db {
 }
 
 model User {
-  id       String   @id @default(cuid())
-  email    String   @unique
-  password String
-  clients  Client[]
+  id              String            @id @default(cuid())
+  email           String            @unique
+  password        String
+  businessProfile BusinessProfile?
+  clients         Client[]
+  invoices        Invoice[]
+  invoiceActivity InvoiceActivity[]
+  reminderRuns    ReminderRun[]
+}
+
+model BusinessProfile {
+  id                       String   @id @default(cuid())
+  userId                   String   @unique
+  legalName                String?
+  displayName              String?
+  email                    String?
+  phone                    String?
+  addressLine1             String?
+  addressLine2             String?
+  city                     String?
+  state                    String?
+  postalCode               String?
+  countryCode              String?
+  logoUrl                  String?
+  defaultCurrency          String   @default("USD")
+  locale                   String   @default("en-US")
+  defaultTaxRateBps        Int      @default(0)
+  defaultPaymentTermsDays  Int      @default(30)
+  invoicePrefix            String   @default("INV")
+  nextInvoiceSequence      Int      @default(1)
+  remindersEnabled         Boolean  @default(false)
+  reminderDaysAfterDue     Int      @default(7)
+  reminderSubject          String?
+  reminderBody             String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Client {
-  id       String    @id @default(cuid())
-  name     String
-  email    String
-  userId   String
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  invoices Invoice[]
+  id                String    @id @default(cuid())
+  name              String
+  email             String
+  companyName       String?
+  contactName       String?
+  phone             String?
+  billingAddress1   String?
+  billingAddress2   String?
+  billingCity       String?
+  billingState      String?
+  billingPostalCode String?
+  billingCountry    String?
+  taxId             String?
+  preferredCurrency String?
+  notes             String?
+  archivedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoices          Invoice[]
+
+  @@index([userId, name])
 }
 
 model Invoice {
-  id             String        @id @default(cuid())
-  clientId       String
-  client         Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  title          String        @default("")
-  description    String
-  lineItemsJson  String        @default("[]")
-  amount         Float
-  status         InvoiceStatus @default(unpaid)
-  dueDate        DateTime
-  createdAt      DateTime      @default(now())
+  id               String             @id @default(cuid())
+  userId           String
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId         String
+  client           Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  invoiceNumber    String
+  title            String             @default("")
+  description      String
+  currency         String             @default("USD")
+  subtotalMinor    Int                @default(0)
+  taxMinor         Int                @default(0)
+  discountMinor    Int                @default(0)
+  totalMinor       Int                @default(0)
+  status           InvoiceStatus      @default(draft)
+  issueDate        DateTime            @default(now())
+  dueDate          DateTime
+  sentAt           DateTime?
+  paidAt           DateTime?
+  voidedAt         DateTime?
+  notes            String?
+  terms            String?
+  internalNotes    String?
+  revision         Int                @default(1)
+  revisedAt        DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  lineItems        InvoiceLineItem[]
+  activities       InvoiceActivity[]
+  reminderRuns     ReminderRun[]
+
+  // Temporary compatibility fields; remove after all invoice screens use normalized values.
+  lineItemsJson    String             @default("[]")
+  amount           Float
+
+  @@unique([userId, invoiceNumber])
+  @@index([userId, status, dueDate])
+  @@index([userId, createdAt])
+  @@index([clientId])
+}
+
+model InvoiceLineItem {
+  id              String   @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description     String
+  quantity        Int      @default(1)
+  unitAmountMinor Int
+  taxRateBps      Int      @default(0)
+  subtotalMinor   Int
+  taxMinor        Int      @default(0)
+  totalMinor      Int
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([invoiceId, sortOrder])
+  @@index([invoiceId])
+}
+
+model InvoiceActivity {
+  id             String              @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice             @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  actorUserId    String
+  actor          User                @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  type           InvoiceActivityType
+  previousStatus InvoiceStatus?
+  nextStatus     InvoiceStatus?
+  metadataJson   String?
+  createdAt      DateTime            @default(now())
+
+  @@index([invoiceId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model ReminderRun {
+  id                String            @id @default(cuid())
+  invoiceId         String
+  invoice           Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind              ReminderKind      @default(reminder)
+  channel           String            @default("email")
+  recipient         String
+  subject           String
+  bodyText          String
+  status            ReminderRunStatus @default(pending)
+  idempotencyKey    String            @unique
+  scheduledFor      DateTime?
+  lockedAt          DateTime?
+  attemptedAt       DateTime?
+  sentAt            DateTime?
+  failedAt          DateTime?
+  failureReason     String?
+  providerMessageId String?
+  attemptCount      Int               @default(0)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([userId, status, scheduledFor])
+  @@index([invoiceId, createdAt])
 }
 
 enum InvoiceStatus {
+  draft
+  sent
   paid
   unpaid
+  void
+}
+
+enum InvoiceActivityType {
+  created
+  updated
+  status_changed
+  pdf_generated
+  email_queued
+  email_sent
+  email_failed
+  reminder_queued
+  reminder_sent
+  reminder_failed
+}
+
+enum ReminderKind {
+  invoice
+  reminder
+}
+
+enum ReminderRunStatus {
+  pending
+  processing
+  sent
+  failed
+  cancelled
 }

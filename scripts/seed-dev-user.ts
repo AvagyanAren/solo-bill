@@ -17,6 +17,19 @@ async function main() {
     create: { email: EMAIL, password: hashed },
     update: { password: hashed },
   });
+  await prisma.businessProfile.upsert({
+    where: { userId: user.id },
+    create: {
+      userId: user.id,
+      email: EMAIL,
+      displayName: "SoloBill Demo",
+      invoicePrefix: "INV",
+      nextInvoiceSequence: 1,
+    },
+    update: {
+      email: EMAIL,
+    },
+  });
   console.log("OK — user ready:", user.email);
 }
 

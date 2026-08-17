@@ -2,6 +2,8 @@ import { loadEnvConfig } from "@next/env";
 import OpenAI from "openai";
 import { z } from "zod";
 
+import { majorToMinor, minorToMajor } from "@/lib/billing/money";
+
 // In some dev/Turbopack paths, server actions see process.env before Next hydrates .env.
 loadEnvConfig(process.cwd());
 
@@ -9,24 +11,55 @@ const PROMPT = `Convert the following freelancer work description into a structu
 
 Return JSON with:
 - title
-- line_items (array of {name, price})
+- line_items (array of {name, price, quantity optional, unitAmountMinor optional})
 - total_amount
+
+Use major-currency prices in "price". Prefer quantity 1 when unsure.
 
 Description:
 {{user_input}}`;
 
+const draftLineSchema = z.object({
+  name: z.string(),
+  price: z.coerce.number(),
+  quantity: z.coerce.number().int().positive().optional(),
+  unitAmountMinor: z.coerce.number().int().optional(),
+});
+
 const draftSchema = z.object({
   title: z.string(),
-  line_items: z.array(
-    z.object({
-      name: z.string(),
-      price: z.coerce.number(),
-    }),
-  ),
+  line_items: z.array(draftLineSchema),
   total_amount: z.coerce.number(),
 });
 
 export type GeneratedInvoiceDraft = z.infer<typeof draftSchema>;
+
+export type NormalizedDraftLineItem = {
+  name: string;
+  price: number;
+  quantity: number;
+  unitAmountMinor: number;
+};
+
+/** Normalize AI/sample line items to integer quantity + minor-unit unit amounts. */
+export function normalizeDraftLineItems(
+  items: GeneratedInvoiceDraft["line_items"],
+  currency = "USD",
+): NormalizedDraftLineItem[] {
+  return items.map((item) => {
+    const quantity = item.quantity && item.quantity > 0 ? item.quantity : 1;
+    const unitAmountMinor =
+      typeof item.unitAmountMinor === "number" && Number.isSafeInteger(item.unitAmountMinor)
+        ? item.unitAmountMinor
+        : majorToMinor(item.price, currency);
+    return {
+      name: item.name,
+      price: item.price,
+      quantity,
+      unitAmountMinor,
+    };
+  });
+}
 
 const MOCK_INVOICE_AI_ENV = "SOLOBILL_MOCK_INVOICE_AI" as const;
 
@@ -52,11 +85,36 @@ function buildMockDraft(userInput: string): GeneratedInvoiceDraft {
   return {
     title: `Invoice — ${short}`,
     line_items: [
-      { name: "Discovery & planning (sample line)", price: 400 },
-      { name: "Design / implementation (sample line)", price: 850 },
-      { name: "Revisions & handoff (sample line)", price: 250 },
+      { name: "Discovery & planning (sample line)", price: 400, quantity: 1, unitAmountMinor: 40_000 },
+      { name: "Design / implementation (sample line)", price: 850, quantity: 1, unitAmountMinor: 85_000 },
+      { name: "Revisions & handoff (sample line)", price: 250, quantity: 1, unitAmountMinor: 25_000 },
     ],
     total_amount: 1500,
+  };
+}
+
+export type NormalizedInvoiceDraft = {
+  title: string;
+  line_items: NormalizedDraftLineItem[];
+  total_amount: number;
+};
+
+/** Normalize AI/mock draft payloads for the invoice editor and persistence layer. */
+export function normalizeInvoiceDraft(
+  draft: GeneratedInvoiceDraft,
+  currency = "USD",
+): NormalizedInvoiceDraft {
+  const line_items = normalizeDraftLineItems(draft.line_items, currency);
+  const totalMinor = line_items.reduce(
+    (sum, item) => sum + item.quantity * item.unitAmountMinor,
+    0,
+  );
+  return {
+    title: draft.title,
+    line_items,
+    total_amount: Number.isFinite(draft.total_amount)
+      ? draft.total_amount
+      : minorToMajor(totalMinor, currency),
   };
 }
 

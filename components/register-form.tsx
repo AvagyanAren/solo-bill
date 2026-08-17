@@ -4,8 +4,7 @@ import { useActionState } from "react";
 
 import { registerAction, type AuthFormState } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/components/base/input/input";
 
 const initialState: AuthFormState = {};
 
@@ -13,38 +12,36 @@ export function RegisterForm() {
   const [state, formAction, pending] = useActionState(registerAction, initialState);
 
   return (
-    <form action={formAction} className="grid gap-4">
-      <div className="grid gap-2">
-        <Label htmlFor="email">Email</Label>
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          aria-invalid={state?.error ? true : undefined}
-          aria-describedby={state?.error ? "register-error" : undefined}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="password">Password</Label>
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          aria-invalid={state?.error ? true : undefined}
-        />
-        <p className="text-xs text-muted-foreground">At least 8 characters.</p>
-      </div>
+    <form action={formAction} className="grid gap-4" autoComplete="on">
+      <Input
+        id="register-email"
+        label="Email"
+        name="email"
+        type="email"
+        autoComplete="username"
+        inputMode="email"
+        spellCheck="false"
+        isRequired
+        isInvalid={Boolean(state?.error)}
+        aria-describedby={state?.error ? "register-error" : undefined}
+      />
+      <Input
+        id="register-password"
+        label="Password"
+        name="password"
+        type="password"
+        autoComplete="new-password"
+        isRequired
+        minLength={8}
+        isInvalid={Boolean(state?.error)}
+        hint="At least 8 characters."
+      />
       {state?.error ? (
-        <p id="register-error" className="text-sm text-destructive" role="alert">
+        <p id="register-error" className="text-sm text-error-primary" role="alert">
           {state.error}
         </p>
       ) : null}
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button type="submit" className="w-full" disabled={pending} isLoading={pending}>
         {pending ? "Creating account…" : "Create account"}
       </Button>
     </form>

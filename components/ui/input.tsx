@@ -1,20 +1,70 @@
-import * as React from "react"
-import { Input as InputPrimitive } from "@base-ui/react/input"
+"use client";
 
-import { cn } from "@/lib/utils"
+import type { ComponentProps, ReactNode } from "react";
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+import { InputBase, TextField } from "@/components/base/input/input";
+import { Label } from "@/components/base/input/label";
+import { HintText } from "@/components/base/input/hint-text";
+import { cx } from "@/lib/utils/cx";
+
+type InputBaseProps = ComponentProps<typeof InputBase>;
+
+export type InputProps = Omit<InputBaseProps, "size" | "onChange" | "value" | "defaultValue"> & {
+  label?: string;
+  hint?: ReactNode;
+  size?: InputBaseProps["size"];
+  isRequired?: boolean;
+  isInvalid?: boolean;
+  name?: string;
+  defaultValue?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+};
+
+export function Input({
+  className,
+  label,
+  hint,
+  id,
+  name,
+  size = "md",
+  isRequired,
+  isInvalid,
+  defaultValue,
+  value,
+  onChange,
+  ...props
+}: InputProps) {
   return (
-    <InputPrimitive
-      type={type}
-      data-slot="input"
-      className={cn(
-        "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
-        className
+    <TextField
+      id={id}
+      name={name}
+      isRequired={isRequired}
+      isInvalid={isInvalid}
+      defaultValue={defaultValue}
+      value={value}
+      onChange={onChange}
+      size={size}
+      className={typeof className === "string" ? className : undefined}
+    >
+      {({ isRequired: required, isInvalid: invalid }) => (
+        <>
+          {label ? (
+            <Label isRequired={required} isInvalid={invalid}>
+              {label}
+            </Label>
+          ) : null}
+          <InputBase
+            {...props}
+            size={size}
+            className={cx("w-full")}
+            aria-label={!label ? props["aria-label"] ?? props.placeholder : props["aria-label"]}
+          />
+          {hint ? <HintText isInvalid={invalid}>{hint}</HintText> : null}
+        </>
       )}
-      {...props}
-    />
-  )
+    </TextField>
+  );
 }
 
-export { Input }
+export { InputBase };

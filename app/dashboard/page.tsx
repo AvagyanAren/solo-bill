@@ -1,6 +1,16 @@
 import Link from "next/link";
+import {
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  CurrencyDollar,
+  Users01,
+} from "@untitledui/icons";
 
-import { buttonVariants } from "@/components/ui/button";
+import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
+import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
+import { PageShell } from "@/components/page-shell";
+import { buttonVariants } from "@/components/ui/button-variants";
 import {
   Card,
   CardContent,
@@ -8,125 +18,377 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ownedInvoiceWhere } from "@/lib/billing/authorization";
+import type { BillingInvoiceStatus } from "@/lib/billing/lifecycle";
+import { formatDate, formatMinorMoney } from "@/lib/format";
 import { prisma } from "@/lib/db";
-import { cn } from "@/lib/utils";
+import { cx } from "@/lib/utils/cx";
 import { requireSession } from "@/lib/require-session";
 
-function formatMoney(n: number) {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-  }).format(n);
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
 }
 
-function formatDate(d: Date) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  }).format(d);
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+type KpiCardProps = {
+  href: string;
+  title: string;
+  description: string;
+  value: string;
+  icon: typeof CurrencyDollar;
+  color: "brand" | "error" | "success" | "warning" | "gray";
+  accentClassName: string;
+};
+
+function KpiCard({
+  href,
+  title,
+  description,
+  value,
+  icon,
+  color,
+  accentClassName,
+}: KpiCardProps) {
+  return (
+    <Link
+      href={href}
+      className="group rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand"
+      aria-label={`${title}: ${value}. ${description}`}
+    >
+      <Card
+        className={cx(
+          "h-full border-l-4 transition-colors hover:bg-secondary/30",
+          accentClassName,
+        )}
+      >
+        <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+          <div className="min-w-0">
+            <CardTitle className="text-base">{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+          <FeaturedIcon icon={icon} color={color} theme="light" size="md" />
+        </CardHeader>
+        <CardContent>
+          <p className="text-2xl font-semibold tabular-nums text-primary">{value}</p>
+        </CardContent>
+      </Card>
+    </Link>
+  );
 }
 
 export default async function DashboardPage() {
   const session = await requireSession();
-  const invoices = await prisma.invoice.findMany({
-    where: { client: { userId: session.userId } },
-    include: { client: true },
-    orderBy: { createdAt: "desc" },
-  });
+  const now = new Date();
+  const today = startOfDay(now);
+  const inSevenDays = addDays(today, 7);
+  const aging30 = addDays(today, -30);
+  const aging60 = addDays(today, -60);
+  const owned = ownedInvoiceWhere(session.userId);
+  const openStatusList: BillingInvoiceStatus[] = ["unpaid", "sent"];
+  const openStatusFilter = { status: { in: openStatusList } };
+
+  const [
+    clientCount,
+    unpaidAgg,
+    paidAgg,
+    overdueCount,
+    overdueAgg,
+    aging0to30,
+    aging31to60,
+    aging61plus,
+    upcomingDue,
+    recentInvoices,
+  ] = await Promise.all([
+    prisma.client.count({ where: { userId: session.userId } }),
+    prisma.invoice.aggregate({
+      where: { ...owned, status: "unpaid" },
+      _sum: { totalMinor: true },
+      _count: true,
+    }),
+    prisma.invoice.aggregate({
+      where: { ...owned, status: "paid" },
+      _sum: { totalMinor: true },
+      _count: true,
+    }),
+    prisma.invoice.count({
+      where: {
+        ...owned,
+        ...openStatusFilter,
+        dueDate: { lt: today },
+      },
+    }),
+    prisma.invoice.aggregate({
+      where: {
+        ...owned,
+        ...openStatusFilter,
+        dueDate: { lt: today },
+      },
+      _sum: { totalMinor: true },
+    }),
+    prisma.invoice.aggregate({
+      where: {
+        ...owned,
+        ...openStatusFilter,
+        dueDate: { gte: aging30, lt: today },
+      },
+      _sum: { totalMinor: true },
+      _count: true,
+    }),
+    prisma.invoice.aggregate({
+      where: {
+        ...owned,
+        ...openStatusFilter,
+        dueDate: { gte: aging60, lt: aging30 },
+      },
+      _sum: { totalMinor: true },
+      _count: true,
+    }),
+    prisma.invoice.aggregate({
+      where: {
+        ...owned,
+        ...openStatusFilter,
+        dueDate: { lt: aging60 },
+      },
+      _sum: { totalMinor: true },
+      _count: true,
+    }),
+    prisma.invoice.findMany({
+      where: {
+        ...owned,
+        ...openStatusFilter,
+        dueDate: { gte: today, lt: inSevenDays },
+      },
+      include: { client: true },
+      orderBy: { dueDate: "asc" },
+      take: 5,
+    }),
+    prisma.invoice.findMany({
+      where: owned,
+      include: { client: true },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
+  ]);
+
+  const outstandingAmountMinor = unpaidAgg._sum.totalMinor ?? 0;
+  const paidAmountMinor = paidAgg._sum.totalMinor ?? 0;
+  const overdueAmountMinor = overdueAgg._sum?.totalMinor ?? 0;
+  const aging0Count = typeof aging0to30._count === "number" ? aging0to30._count : 0;
+  const aging31Count = typeof aging31to60._count === "number" ? aging31to60._count : 0;
+  const aging61Count = typeof aging61plus._count === "number" ? aging61plus._count : 0;
+  const aging0Amount = aging0to30._sum?.totalMinor ?? 0;
+  const aging31Amount = aging31to60._sum?.totalMinor ?? 0;
+  const aging61Amount = aging61plus._sum?.totalMinor ?? 0;
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Signed in as <span className="font-medium text-foreground">{session.email}</span>
-          </p>
-        </div>
-        <Link href="/invoice/new" className={cn(buttonVariants(), "shrink-0")}>
+    <PageShell
+      title="Dashboard"
+      description={
+        <p>
+          Signed in as <span className="font-medium text-primary">{session.email}</span>
+        </p>
+      }
+      actions={
+        <Link href="/invoice/new" className={cx(buttonVariants(), "min-h-11 shrink-0")}>
           New invoice
         </Link>
-      </div>
+      }
+      contentClassName="mt-8 space-y-8"
+    >
+      <section aria-label="Key billing metrics">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            href="/dashboard/invoices?status=unpaid"
+            title="Outstanding"
+            description={`${unpaidAgg._count} unpaid invoice${unpaidAgg._count === 1 ? "" : "s"}`}
+            value={formatMinorMoney(outstandingAmountMinor)}
+            icon={CurrencyDollar}
+            color="brand"
+            accentClassName="border-l-fg-brand-primary"
+          />
+          <KpiCard
+            href="/dashboard/invoices?overdue=1"
+            title="Overdue"
+            description={
+              overdueCount
+                ? `${formatMinorMoney(overdueAmountMinor)} past due`
+                : "Past due and unpaid"
+            }
+            value={String(overdueCount)}
+            icon={AlertCircle}
+            color="error"
+            accentClassName="border-l-fg-error-primary"
+          />
+          <KpiCard
+            href="/dashboard/invoices?status=paid"
+            title="Collected"
+            description={`${paidAgg._count} paid invoice${paidAgg._count === 1 ? "" : "s"}`}
+            value={formatMinorMoney(paidAmountMinor)}
+            icon={CheckCircle}
+            color="success"
+            accentClassName="border-l-fg-success-primary"
+          />
+          <KpiCard
+            href="/dashboard/clients"
+            title="Clients"
+            description="People and companies you bill"
+            value={String(clientCount)}
+            icon={Users01}
+            color="gray"
+            accentClassName="border-l-fg-secondary"
+          />
+        </div>
+      </section>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+      <section
+        className="grid gap-4 lg:grid-cols-2"
+        aria-label="Aging and upcoming due summaries"
+      >
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Clients</CardTitle>
-            <CardDescription>Maintain who you bill.</CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">Aging summary</CardTitle>
+                <CardDescription>Open invoices by days past due</CardDescription>
+              </div>
+              <FeaturedIcon icon={Clock} color="warning" theme="light" size="md" />
+            </div>
           </CardHeader>
           <CardContent>
-            <Link href="/dashboard/clients" className={cn(buttonVariants({ variant: "outline" }), "inline-flex")}>
-              Manage clients
+            <ul className="space-y-3">
+              <li className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-tertiary">1–30 days</span>
+                <span className="tabular-nums text-primary">
+                  {aging0Count} · {formatMinorMoney(aging0Amount)}
+                </span>
+              </li>
+              <li className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-tertiary">31–60 days</span>
+                <span className="tabular-nums text-primary">
+                  {aging31Count} · {formatMinorMoney(aging31Amount)}
+                </span>
+              </li>
+              <li className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-tertiary">61+ days</span>
+                <span className="tabular-nums text-primary">
+                  {aging61Count} · {formatMinorMoney(aging61Amount)}
+                </span>
+              </li>
+            </ul>
+            <Link
+              href="/dashboard/invoices?overdue=1"
+              className={cx(buttonVariants({ variant: "link" }), "mt-4 h-auto min-h-11 px-0")}
+            >
+              View overdue invoices
             </Link>
           </CardContent>
         </Card>
-        <Card className="opacity-90">
-          <CardHeader>
-            <CardTitle className="text-base">Quick add</CardTitle>
-            <CardDescription>Jump straight to a new invoice.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/invoice/new" className={cn(buttonVariants({ variant: "secondary" }), "inline-flex")}>
-              Create invoice
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
 
-      <div className="mt-10">
-        <h2 className="text-base font-medium text-foreground">Invoices</h2>
-        {invoices.length === 0 ? (
-          <div className="mt-4 rounded-xl border border-dashed border-border bg-muted/30 p-8 text-center">
-            <p className="text-sm text-muted-foreground">No invoices yet.</p>
-            <Link href="/invoice/new" className={cn(buttonVariants({ variant: "link" }), "mt-2")}>
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">Upcoming due</CardTitle>
+                <CardDescription>Open invoices due in the next 7 days</CardDescription>
+              </div>
+              <FeaturedIcon icon={Clock} color="brand" theme="light" size="md" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {upcomingDue.length === 0 ? (
+              <p className="text-sm text-tertiary">Nothing due in the next week.</p>
+            ) : (
+              <ul className="divide-y divide-secondary">
+                {upcomingDue.map((inv) => (
+                  <li
+                    key={inv.id}
+                    className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-primary">
+                        {inv.invoiceNumber}
+                      </p>
+                      <p className="truncate text-xs text-tertiary">
+                        {inv.client.name} · due {formatDate(inv.dueDate)}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm tabular-nums text-primary">
+                      {formatMinorMoney(inv.totalMinor, inv.currency)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Link
+              href="/dashboard/invoices?status=unpaid"
+              className={cx(buttonVariants({ variant: "link" }), "mt-4 h-auto min-h-11 px-0")}
+            >
+              View unpaid invoices
+            </Link>
+          </CardContent>
+        </Card>
+      </section>
+
+      <div>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-primary">Recent invoices</h2>
+            <p className="text-sm text-tertiary">Your latest billing activity</p>
+          </div>
+          <Link
+            href="/dashboard/invoices"
+            className={cx(buttonVariants({ variant: "outline", size: "sm" }), "min-h-11 shrink-0")}
+          >
+            View all
+          </Link>
+        </div>
+
+        {recentInvoices.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-secondary bg-secondary p-8 text-center">
+            <p className="text-sm text-tertiary">No invoices yet.</p>
+            <Link href="/invoice/new" className={cx(buttonVariants({ variant: "link" }), "mt-2")}>
               Create your first invoice
             </Link>
           </div>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-xl border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Due</TableHead>
-                  <TableHead className="w-[1%] text-right"> </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell className="font-medium">{inv.client.name}</TableCell>
-                    <TableCell className="max-w-[200px] truncate text-muted-foreground">
-                      {inv.title || "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMoney(inv.amount)}</TableCell>
-                    <TableCell className="capitalize">{inv.status}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(inv.dueDate)}</TableCell>
-                    <TableCell className="text-right">
-                      <Link
-                        href={`/invoice/${inv.id}`}
-                        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                      >
-                        View
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="overflow-hidden rounded-xl ring-1 ring-secondary ring-inset">
+            <ul className="divide-y divide-secondary">
+              {recentInvoices.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-primary">
+                      {inv.title || inv.invoiceNumber || "Untitled invoice"}
+                    </p>
+                    <p className="text-sm text-tertiary">{inv.client.name}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <InvoiceStatusBadge status={inv.status} dueDate={inv.dueDate} />
+                    <span className="text-sm font-medium tabular-nums text-primary">
+                      {formatMinorMoney(inv.totalMinor, inv.currency)}
+                    </span>
+                    <Link
+                      href={`/invoice/${inv.id}`}
+                      className={cx(buttonVariants({ variant: "outline", size: "sm" }), "min-h-11")}
+                    >
+                      View
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

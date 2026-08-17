@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SoloBill
 
-## Getting Started
+AI-assisted invoicing for freelancers — clients, invoice editor, PDF export, payment tracking, and local mock email delivery.
 
-First, run the development server:
+## Getting started
 
 ```bash
+cp .env.example .env
+npm install
+npx prisma db push
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Rebuild native SQLite bindings, then start Next.js |
+| `npm run typecheck` | TypeScript (`tsc --noEmit`) |
+| `npm test` | Unit tests (Vitest) |
+| `npm run e2e` | Playwright end-to-end |
 
-## Learn More
+## Phase 5 — PDF, mock email, manual reminders
 
-To learn more about Next.js, take a look at the following resources:
+### PDF export
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Authenticated route: `GET /api/invoices/[id]/pdf`
+- Uses a Node-safe **pdfkit** renderer (`lib/pdf/invoice-pdf.ts`)
+- Requires a session; ownership is checked via `requireSession` + `ownedInvoiceWhere`
+- On download, an `InvoiceActivity` of type `pdf_generated` is recorded
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+From the invoice detail page, use **Download PDF**.
 
-## Deploy on Vercel
+### Mock email delivery
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+SoloBill Phase 5 **never** calls external email APIs (no Resend/SendGrid/SMTP).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Delivery goes through `lib/email`:
+
+- `getEmailAdapter()` resolves the adapter
+- `SOLOBILL_MOCK_EMAIL=1` forces the mock outbox (documented default for local/CI)
+- If unset, the mock adapter is still used (safe default until a real provider is wired)
+
+Each send:
+
+1. Creates a `ReminderRun` (recipient, subject, body, timestamps, status, failure reason)
+2. Records matching `InvoiceActivity` (`email_*` / `reminder_*`)
+3. On successful **Send invoice**, sets `sentAt` and moves **draft → sent** when applicable
+
+### Manual reminders
+
+- **Send reminder** is available for **unpaid** invoices and **overdue** `sent` invoices
+- Uses the same mock adapter and `ReminderRun` / activity outbox history
+- Future: a scheduler can enqueue `ReminderRun` rows and call the same adapter boundary; a live provider can replace the mock without changing the UI/actions
+
+### Environment
+
+See `.env.example` for `SOLOBILL_MOCK_EMAIL` and related flags.
+
+## Deploy notes
+
+- Local: SQLite via `DATABASE_URL="file:./dev.db"`
+- Vercel / Turso: set `DATABASE_URL` (libsql), `TURSO_AUTH_TOKEN`, and `AUTH_SECRET` (32+ chars)

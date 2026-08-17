@@ -25,9 +25,9 @@ export default async function RegisterPage() {
         </CardHeader>
         <CardContent className="grid gap-6">
           <RegisterForm />
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-center text-sm text-tertiary">
             Already have an account?{" "}
-            <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">
+            <Link href="/login" className="font-medium text-primary underline-offset-4 hover:underline">
               Sign in
             </Link>
           </p>
