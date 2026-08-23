@@ -67,6 +67,36 @@ function clientDataFromParsed(data: z.infer<typeof clientSchema>) {
   };
 }
 
+function revalidateClientPaths() {
+  revalidatePath("/dashboard/clients");
+}
+
+export async function archiveClientAction(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id) {
+    return;
+  }
+  await prisma.client.updateMany({
+    where: { ...ownedClientWhere(session.userId, { id }), archivedAt: null },
+    data: { archivedAt: new Date() },
+  });
+  revalidateClientPaths();
+}
+
+export async function unarchiveClientAction(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id) {
+    return;
+  }
+  await prisma.client.updateMany({
+    where: ownedClientWhere(session.userId, { id }),
+    data: { archivedAt: null },
+  });
+  revalidateClientPaths();
+}
+
 export async function createClientAction(
   _prev: ClientFormState | undefined,
   formData: FormData,

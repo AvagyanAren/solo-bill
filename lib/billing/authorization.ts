@@ -7,6 +7,14 @@ export function ownedClientWhere(userId: string, filter: IdFilter = {}) {
   };
 }
 
+/** Non-archived clients for lists and invoice assignment. */
+export function activeClientWhere(userId: string, filter: IdFilter = {}) {
+  return {
+    ...ownedClientWhere(userId, filter),
+    archivedAt: null,
+  };
+}
+
 export function ownedInvoiceWhere(userId: string, filter: IdFilter = {}) {
   return {
     ...filter,

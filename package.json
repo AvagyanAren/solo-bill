@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "e2e:production": "playwright test --config playwright.production.config.ts",
     "e2e:ui": "playwright test --ui",
     "postinstall": "prisma generate && npm rebuild better-sqlite3",
     "rebuild:native": "npm rebuild better-sqlite3"

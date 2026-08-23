@@ -106,10 +106,6 @@ model Invoice {
   activities       InvoiceActivity[]
   reminderRuns     ReminderRun[]
 
-  // Temporary compatibility fields; remove after all invoice screens use normalized values.
-  lineItemsJson    String             @default("[]")
-  amount           Float
-
   @@unique([userId, invoiceNumber])
   @@index([userId, status, dueDate])
   @@index([userId, createdAt])

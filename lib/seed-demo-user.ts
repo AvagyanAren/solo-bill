@@ -24,5 +24,18 @@ export async function seedDemoUser(): Promise<{ email: string }> {
       email: DEMO_USER_EMAIL,
     },
   });
+
+  const clientCount = await prisma.client.count({ where: { userId: user.id } });
+  if (clientCount === 0) {
+    await prisma.client.create({
+      data: {
+        userId: user.id,
+        name: "Acme Studio",
+        email: "billing@acme.test",
+        companyName: "Acme Studio LLC",
+      },
+    });
+  }
+
   return { email: user.email };
 }

@@ -18,7 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ownedInvoiceWhere } from "@/lib/billing/authorization";
+import { ownedInvoiceWhere, activeClientWhere } from "@/lib/billing/authorization";
 import {
   daysPastDue,
   isInvoiceOverdue,
@@ -67,12 +67,18 @@ function KpiCard({
           accentClassName,
         )}
       >
-        <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-          <div className="min-w-0">
-            <CardTitle className="text-base">{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-base whitespace-normal">{title}</CardTitle>
+            <CardDescription className="whitespace-normal">{description}</CardDescription>
           </div>
-          <FeaturedIcon icon={icon} color={color} theme="light" size="md" />
+          <FeaturedIcon
+            icon={icon}
+            color={color}
+            theme="light"
+            size="md"
+            className="shrink-0"
+          />
         </CardHeader>
         <CardContent>
           <p className="text-2xl font-semibold tabular-nums text-primary">{value}</p>
@@ -90,7 +96,7 @@ export default async function DashboardPage() {
 
   // Two Turso round-trips instead of ten parallel aggregates (each still pays libSQL latency).
   const [clientCount, invoices] = await Promise.all([
-    prisma.client.count({ where: { userId: session.userId } }),
+    prisma.client.count({ where: activeClientWhere(session.userId) }),
     prisma.invoice.findMany({
       where: owned,
       select: {
@@ -176,7 +182,7 @@ export default async function DashboardPage() {
       contentClassName="mt-8 space-y-8"
     >
       <section aria-label="Key billing metrics">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             href="/dashboard/invoices?status=unpaid"
             title="Outstanding"

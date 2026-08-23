@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { ownedClientWhere, ownedInvoiceWhere } from "@/lib/billing/authorization";
-import { dueDateFromTerms, parseInvoiceDueDate, parseDateInput } from "@/lib/billing/dates";
+import { activeClientWhere, ownedInvoiceWhere } from "@/lib/billing/authorization";
+import { dueDateFromTerms, parseInvoiceDueDate } from "@/lib/billing/dates";
 import {
   assertInvoiceTransition,
   canTransitionInvoice,
@@ -151,17 +151,6 @@ function buildNormalizedLines(
   }
 }
 
-function legacyLineItemsJson(lines: NormalizedPersistedLine[], currency: string) {
-  return JSON.stringify(
-    lines.map((line) => ({
-      name: line.description,
-      price: minorToMajor(line.quantity * line.unitAmountMinor, currency),
-      quantity: line.quantity,
-      unitAmountMinor: line.unitAmountMinor,
-    })),
-  );
-}
-
 async function allocateInvoiceNumber(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   userId: string,
@@ -207,7 +196,7 @@ async function persistInvoiceEditor(options: {
   const { session, data, mode } = options;
 
   const client = await prisma.client.findFirst({
-    where: ownedClientWhere(session.userId, { id: data.clientId }),
+    where: activeClientWhere(session.userId, { id: data.clientId }),
   });
   if (!client) {
     return { ok: false, error: "Client not found." };
@@ -327,8 +316,6 @@ async function persistInvoiceEditor(options: {
         notes: data.notes?.trim() || null,
         terms: data.terms?.trim() || null,
         internalNotes: data.internalNotes?.trim() || null,
-        lineItemsJson: legacyLineItemsJson(linesResult.lines, data.currency),
-        amount: minorToMajor(totals.totalMinor, data.currency),
       };
 
       if (!existing) {
@@ -679,8 +666,6 @@ export async function duplicateInvoiceAction(
           notes: source.notes,
           terms: source.terms,
           internalNotes: source.internalNotes,
-          lineItemsJson: source.lineItemsJson,
-          amount: source.amount,
           revision: 1,
           lineItems: {
             create: source.lineItems.map((item, sortOrder) => ({

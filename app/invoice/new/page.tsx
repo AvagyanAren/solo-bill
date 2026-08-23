@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { activeClientWhere } from "@/lib/billing/authorization";
 import { prisma } from "@/lib/db";
 import { cx } from "@/lib/utils/cx";
 import { isInvoiceAiMockMode } from "@/lib/openai-invoice";
@@ -20,7 +21,7 @@ export default async function NewInvoicePage() {
   const mockInvoiceAi = isInvoiceAiMockMode();
   const [clients, profile] = await Promise.all([
     prisma.client.findMany({
-      where: { userId: session.userId },
+      where: activeClientWhere(session.userId),
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true, preferredCurrency: true },
     }),
