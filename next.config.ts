@@ -1,6 +1,25 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        source: "/clients",
+        destination: "/dashboard/clients",
+        permanent: false,
+      },
+      {
+        source: "/clients/:path*",
+        destination: "/dashboard/clients/:path*",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/invoices/new",
+        destination: "/invoice/new",
+        permanent: false,
+      },
+    ];
+  },
   // Native addon — must not be bundled into RSC/server chunks or SQLite breaks at runtime.
   serverExternalPackages: [
     "better-sqlite3",

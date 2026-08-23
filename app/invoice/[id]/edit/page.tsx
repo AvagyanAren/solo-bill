@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { InvoiceEditor } from "@/components/invoice-editor";
 import { PageShell } from "@/components/page-shell";
 import { buttonVariants } from "@/components/ui/button-variants";
-import { ownedInvoiceWhere } from "@/lib/billing/authorization";
+import { activeClientWhere, ownedInvoiceWhere } from "@/lib/billing/authorization";
 import { basisPointsToPercentage } from "@/lib/billing/tax";
 import { minorToMajor } from "@/lib/billing/money";
 import { prisma } from "@/lib/db";
@@ -32,7 +32,7 @@ export default async function EditInvoicePage({ params }: Props) {
       },
     }),
     prisma.client.findMany({
-      where: { userId: session.userId },
+      where: activeClientWhere(session.userId),
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true, preferredCurrency: true },
     }),

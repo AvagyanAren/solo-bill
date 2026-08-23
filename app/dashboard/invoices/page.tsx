@@ -36,6 +36,7 @@ type PageProps = {
     anchor?: string;
     clientId?: string;
     status?: string;
+    open?: string;
     overdue?: string;
     q?: string;
   }>;
@@ -51,6 +52,7 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
   const range = resolveInvoiceDateRange(params);
   const clientId = params.clientId?.trim() || null;
   const status = isStatus(params.status?.trim()) ? params.status.trim() : null;
+  const open = params.open === "1" || params.open === "true";
   const overdue = params.overdue === "1" || params.overdue === "true";
   const query = params.q?.trim() || "";
   const now = new Date();
@@ -79,9 +81,11 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
         status: { in: [...OPEN_INVOICE_STATUSES] },
         dueDate: prismaOverdueDueDateFilter(now),
       }
-    : status
-      ? { status: status as BillingInvoiceStatus }
-      : {};
+    : open
+      ? { status: { in: [...OPEN_INVOICE_STATUSES] } }
+      : status
+        ? { status: status as BillingInvoiceStatus }
+        : {};
 
   const searchFilter = query
     ? {

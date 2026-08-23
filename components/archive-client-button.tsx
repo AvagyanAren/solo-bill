@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
-import { deleteClientAction } from "@/app/actions/clients";
+import { archiveClientAction } from "@/app/actions/clients";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,12 +17,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/providers/toast-provider";
 
-type DeleteClientButtonProps = {
+type ArchiveClientButtonProps = {
   clientId: string;
   clientName: string;
 };
 
-export function DeleteClientButton({ clientId, clientName }: DeleteClientButtonProps) {
+export function ArchiveClientButton({ clientId, clientName }: ArchiveClientButtonProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
@@ -33,25 +33,17 @@ export function DeleteClientButton({ clientId, clientName }: DeleteClientButtonP
     startTransition(() => {
       void (async () => {
         try {
-          const result = await deleteClientAction(formData);
-          if (!result.ok) {
-            toast({
-              title: "Delete failed",
-              description: result.error,
-              tone: "error",
-            });
-            return;
-          }
+          await archiveClientAction(formData);
           toast({
-            title: "Client deleted",
-            description: `${clientName} was permanently removed.`,
+            title: "Client archived",
+            description: `${clientName} is hidden from your active list. Existing invoices are unchanged.`,
             tone: "success",
           });
           router.refresh();
         } catch {
           toast({
-            title: "Delete failed",
-            description: "Unable to delete this client.",
+            title: "Archive failed",
+            description: "Unable to archive this client.",
             tone: "error",
           });
         }
@@ -61,19 +53,20 @@ export function DeleteClientButton({ clientId, clientName }: DeleteClientButtonP
 
   return (
     <AlertDialog>
-      <AlertDialogTrigger>Delete</AlertDialogTrigger>
+      <AlertDialogTrigger>Archive</AlertDialogTrigger>
       <AlertDialogPopup>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete client?</AlertDialogTitle>
+          <AlertDialogTitle>Archive client?</AlertDialogTitle>
           <AlertDialogDescription>
-            <span className="font-medium text-primary">{clientName}</span> will be permanently
-            removed. Clients with existing invoices cannot be deleted — archive them instead.
+            <span className="font-medium text-primary">{clientName}</span> will be hidden from client
+            lists and new invoices. Existing invoices stay available; you can restore the client later
+            from the archived section.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
           <AlertDialogAction disabled={pending} onClick={handleConfirm}>
-            {pending ? "Deleting…" : "Delete client"}
+            {pending ? "Archiving…" : "Archive client"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogPopup>

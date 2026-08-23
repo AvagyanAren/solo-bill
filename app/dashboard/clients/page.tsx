@@ -1,6 +1,8 @@
 import Link from "next/link";
 
+import { ArchiveClientButton } from "@/components/archive-client-button";
 import { DeleteClientButton } from "@/components/delete-client-button";
+import { UnarchiveClientButton } from "@/components/unarchive-client-button";
 import { PageShell } from "@/components/page-shell";
 import { buttonVariants } from "@/components/ui/button-variants";
 import {
@@ -12,16 +14,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { activeClientWhere } from "@/lib/billing/authorization";
 import { prisma } from "@/lib/db";
 import { cx } from "@/lib/utils/cx";
 import { requireSession } from "@/lib/require-session";
 
 export default async function ClientsPage() {
   const session = await requireSession();
-  const clients = await prisma.client.findMany({
-    where: { userId: session.userId },
-    orderBy: { name: "asc" },
-  });
+  const [clients, archivedClients] = await Promise.all([
+    prisma.client.findMany({
+      where: activeClientWhere(session.userId),
+      orderBy: { name: "asc" },
+    }),
+    prisma.client.findMany({
+      where: { userId: session.userId, archivedAt: { not: null } },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return (
     <PageShell
@@ -60,6 +69,7 @@ export default async function ClientsPage() {
                   >
                     Edit
                   </Link>
+                  <ArchiveClientButton clientId={c.id} clientName={c.name} />
                   <DeleteClientButton clientId={c.id} clientName={c.name} />
                 </div>
               </li>
@@ -91,6 +101,7 @@ export default async function ClientsPage() {
                         >
                           Edit
                         </Link>
+                        <ArchiveClientButton clientId={c.id} clientName={c.name} />
                         <DeleteClientButton clientId={c.id} clientName={c.name} />
                       </div>
                     </TableCell>
@@ -101,6 +112,34 @@ export default async function ClientsPage() {
           </div>
         </>
       )}
+
+      {archivedClients.length > 0 ? (
+        <section className="mt-10 space-y-4" aria-label="Archived clients">
+          <div>
+            <h2 className="text-base font-semibold text-primary">Archived</h2>
+            <p className="text-sm text-tertiary">
+              Hidden from new invoices. Restore a client to bill them again.
+            </p>
+          </div>
+          <ul className="divide-y divide-secondary rounded-xl border border-secondary">
+            {archivedClients.map((c) => (
+              <li
+                key={c.id}
+                className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-primary">{c.name}</p>
+                  <p className="break-all text-sm text-tertiary">{c.email}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <UnarchiveClientButton clientId={c.id} clientName={c.name} />
+                  <DeleteClientButton clientId={c.id} clientName={c.name} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </PageShell>
   );
 }

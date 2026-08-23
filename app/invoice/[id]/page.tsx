@@ -25,9 +25,8 @@ import {
 } from "@/lib/billing/lifecycle";
 import { composeInvoiceEmail } from "@/lib/email/compose";
 import { basisPointsToPercentage } from "@/lib/billing/tax";
-import { minorToMajor } from "@/lib/billing/money";
 import { prisma } from "@/lib/db";
-import { formatDate, formatMinorMoney, formatMoney } from "@/lib/format";
+import { formatDate, formatMinorMoney } from "@/lib/format";
 import { cx } from "@/lib/utils/cx";
 import { requireSession } from "@/lib/require-session";
 
@@ -56,32 +55,6 @@ function parseActivityMetadata(json: string | null): ActivityMetadata | null {
     };
   } catch {
     return null;
-  }
-}
-
-type LegacyLineItem = { name: string; price: number };
-
-function parseLegacyLineItems(json: string): LegacyLineItem[] {
-  try {
-    const data = JSON.parse(json) as unknown;
-    if (!Array.isArray(data)) {
-      return [];
-    }
-    return data
-      .map((row) => {
-        if (!row || typeof row !== "object") {
-          return null;
-        }
-        const name = "name" in row && typeof row.name === "string" ? row.name : "";
-        const price = "price" in row && typeof row.price === "number" ? row.price : Number.NaN;
-        if (!name || !Number.isFinite(price)) {
-          return null;
-        }
-        return { name, price };
-      })
-      .filter((x): x is LegacyLineItem => x !== null);
-  } catch {
-    return [];
   }
 }
 
@@ -124,8 +97,6 @@ export default async function InvoiceDetailPage({ params }: Props) {
     taxMinor: item.taxMinor,
     totalMinor: item.totalMinor,
   }));
-  const legacyLines =
-    normalizedLines.length === 0 ? parseLegacyLineItems(invoice.lineItemsJson) : [];
 
   const businessName =
     profile?.displayName || profile?.legalName || session.email || "Your business";
@@ -285,26 +256,6 @@ export default async function InvoiceDetailPage({ params }: Props) {
             </TableBody>
           </Table>
         </div>
-      ) : legacyLines.length > 0 ? (
-        <div className="overflow-hidden rounded-xl border border-secondary">
-          <Table>
-            <TableCaption className="sr-only">Invoice line items</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Item</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {legacyLines.map((row, i) => (
-                <TableRow key={i}>
-                  <TableCell>{row.name}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatMoney(row.price)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
       ) : null}
 
       <dl className="ml-auto grid w-full gap-2 rounded-xl border border-secondary p-4 text-sm sm:max-w-sm">
@@ -332,14 +283,6 @@ export default async function InvoiceDetailPage({ params }: Props) {
             {formatMinorMoney(invoice.totalMinor, invoice.currency)}
           </dd>
         </div>
-        {legacyLines.length > 0 && normalizedLines.length === 0 ? (
-          <div className="flex justify-between gap-4 text-tertiary">
-            <dt>Legacy total</dt>
-            <dd className="tabular-nums">
-              {formatMoney(minorToMajor(invoice.totalMinor, invoice.currency))}
-            </dd>
-          </div>
-        ) : null}
       </dl>
 
       {(invoice.notes || invoice.terms || invoice.internalNotes) && (
