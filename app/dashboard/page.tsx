@@ -114,8 +114,8 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  let unpaidCount = 0;
-  let unpaidAmountMinor = 0;
+  let openCount = 0;
+  let openAmountMinor = 0;
   let paidCount = 0;
   let paidAmountMinor = 0;
   let overdueCount = 0;
@@ -131,9 +131,9 @@ export default async function DashboardPage() {
   for (const inv of invoices) {
     const status = inv.status as BillingInvoiceStatus;
 
-    if (status === "unpaid") {
-      unpaidCount += 1;
-      unpaidAmountMinor += inv.totalMinor;
+    if (isOpenInvoiceStatus(status)) {
+      openCount += 1;
+      openAmountMinor += inv.totalMinor;
     } else if (status === "paid") {
       paidCount += 1;
       paidAmountMinor += inv.totalMinor;
@@ -164,7 +164,7 @@ export default async function DashboardPage() {
   upcomingDue.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
   const upcomingDueLimited = upcomingDue.slice(0, 5);
   const recentInvoices = invoices.slice(0, 5);
-  const outstandingAmountMinor = unpaidAmountMinor;
+  const outstandingAmountMinor = openAmountMinor;
 
   return (
     <PageShell
@@ -184,9 +184,9 @@ export default async function DashboardPage() {
       <section aria-label="Key billing metrics">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
-            href="/dashboard/invoices?status=unpaid"
+            href="/dashboard/invoices?open=1"
             title="Outstanding"
-            description={`${unpaidCount} unpaid invoice${unpaidCount === 1 ? "" : "s"}`}
+            description={`${openCount} open invoice${openCount === 1 ? "" : "s"}`}
             value={formatMinorMoney(outstandingAmountMinor)}
             icon={CurrencyDollar}
             color="brand"
@@ -306,10 +306,10 @@ export default async function DashboardPage() {
               </ul>
             )}
             <Link
-              href="/dashboard/invoices?status=unpaid"
+              href="/dashboard/invoices?open=1"
               className={cx(buttonVariants({ variant: "link" }), "mt-4 h-auto min-h-11 px-0")}
             >
-              View unpaid invoices
+              View open invoices
             </Link>
           </CardContent>
         </Card>

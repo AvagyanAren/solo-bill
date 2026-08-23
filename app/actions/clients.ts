@@ -8,11 +8,21 @@ import { ownedClientWhere } from "@/lib/billing/authorization";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/require-session";
 
+const CURRENCY_PATTERN = /^[A-Z]{3}$/;
+
 const clientSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(200),
   email: z.string().trim().email("Enter a valid email."),
   companyName: z.string().trim().max(200),
+  contactName: z.string().trim().max(200),
   phone: z.string().trim().max(50),
+  preferredCurrency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((value) => value === "" || CURRENCY_PATTERN.test(value), {
+      message: "Use a 3-letter currency code (e.g. USD).",
+    }),
   billingAddress1: z.string().trim().max(200),
   billingAddress2: z.string().trim().max(200),
   billingCity: z.string().trim().max(100),
@@ -28,6 +38,8 @@ export type ClientFormState = {
   fieldErrors?: Partial<Record<keyof z.infer<typeof clientSchema>, string>>;
 };
 
+export type DeleteClientResult = { ok: true } | { ok: false; error: string };
+
 function emptyToNull(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
@@ -38,7 +50,9 @@ function readClientFields(formData: FormData) {
     name: formData.get("name"),
     email: formData.get("email"),
     companyName: String(formData.get("companyName") ?? ""),
+    contactName: String(formData.get("contactName") ?? ""),
     phone: String(formData.get("phone") ?? ""),
+    preferredCurrency: String(formData.get("preferredCurrency") ?? ""),
     billingAddress1: String(formData.get("billingAddress1") ?? ""),
     billingAddress2: String(formData.get("billingAddress2") ?? ""),
     billingCity: String(formData.get("billingCity") ?? ""),
@@ -55,7 +69,9 @@ function clientDataFromParsed(data: z.infer<typeof clientSchema>) {
     name: data.name,
     email: data.email,
     companyName: emptyToNull(data.companyName),
+    contactName: emptyToNull(data.contactName),
     phone: emptyToNull(data.phone),
+    preferredCurrency: emptyToNull(data.preferredCurrency),
     billingAddress1: emptyToNull(data.billingAddress1),
     billingAddress2: emptyToNull(data.billingAddress2),
     billingCity: emptyToNull(data.billingCity),
@@ -140,16 +156,29 @@ export async function updateClientAction(
   redirect("/dashboard/clients");
 }
 
-export async function deleteClientAction(formData: FormData): Promise<void> {
+export async function deleteClientAction(formData: FormData): Promise<DeleteClientResult> {
   const session = await requireSession();
   const id = formData.get("id");
   if (typeof id !== "string" || !id) {
-    return;
+    return { ok: false, error: "Missing client." };
   }
-  await prisma.client.deleteMany({
-    where: ownedClientWhere(session.userId, { id }),
-  });
+
+  const owned = ownedClientWhere(session.userId, { id });
+  const invoiceCount = await prisma.invoice.count({ where: { clientId: id, userId: session.userId } });
+  if (invoiceCount > 0) {
+    return {
+      ok: false,
+      error: `This client has ${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"}. Delete those invoices first, or archive the client instead.`,
+    };
+  }
+
+  const result = await prisma.client.deleteMany({ where: owned });
+  if (result.count === 0) {
+    return { ok: false, error: "Client not found or you do not have access." };
+  }
+
   revalidatePath("/dashboard/clients");
+  return { ok: true };
 }
 
 function fieldErrorsFromZod(error: z.ZodError): ClientFormState {

@@ -18,11 +18,9 @@ test("production health endpoint reports valid env", async ({ request }) => {
   expect(body.env.hasAuthSecret).toBe(true);
 });
 
-test("production login reaches dashboard", async ({ page }) => {
+test("production dashboard reachable (public demo skips login form)", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto("/login");
-  await page.locator('input[name="email"]').fill("demo@solobill.local");
-  await page.locator('input[name="password"]').fill("SoloBill-Mvp-2026!");
-  await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/dashboard/);
+  await expect(page.getByRole("heading", { name: /dashboard/i })).toBeVisible();
 });

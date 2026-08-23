@@ -17,7 +17,9 @@ export type ClientFormDefaults = {
   name: string;
   email: string;
   companyName: string;
+  contactName: string;
   phone: string;
+  preferredCurrency: string;
   billingAddress1: string;
   billingAddress2: string;
   billingCity: string;
@@ -40,7 +42,9 @@ const emptyDefaults: ClientFormDefaults = {
   name: "",
   email: "",
   companyName: "",
+  contactName: "",
   phone: "",
+  preferredCurrency: "",
   billingAddress1: "",
   billingAddress2: "",
   billingCity: "",
@@ -96,6 +100,14 @@ export function ClientForm(props: Props) {
         hint={state?.fieldErrors?.companyName}
       />
       <Input
+        label="Contact name"
+        name="contactName"
+        defaultValue={defaults.contactName}
+        autoComplete="name"
+        isInvalid={Boolean(state?.fieldErrors?.contactName)}
+        hint={state?.fieldErrors?.contactName}
+      />
+      <Input
         label="Phone"
         name="phone"
         type="tel"
@@ -103,6 +115,18 @@ export function ClientForm(props: Props) {
         autoComplete="tel"
         isInvalid={Boolean(state?.fieldErrors?.phone)}
         hint={state?.fieldErrors?.phone}
+      />
+      <Input
+        label="Preferred currency"
+        name="preferredCurrency"
+        defaultValue={defaults.preferredCurrency}
+        placeholder="USD"
+        maxLength={3}
+        isInvalid={Boolean(state?.fieldErrors?.preferredCurrency)}
+        hint={
+          state?.fieldErrors?.preferredCurrency ??
+          "Optional 3-letter code used when creating invoices for this client."
+        }
       />
       <Input
         label="Billing address"

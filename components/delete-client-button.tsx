@@ -33,7 +33,15 @@ export function DeleteClientButton({ clientId, clientName }: DeleteClientButtonP
     startTransition(() => {
       void (async () => {
         try {
-          await deleteClientAction(formData);
+          const result = await deleteClientAction(formData);
+          if (!result.ok) {
+            toast({
+              title: "Delete failed",
+              description: result.error,
+              tone: "error",
+            });
+            return;
+          }
           toast({
             title: "Client deleted",
             description: `${clientName} was permanently removed.`,
@@ -58,8 +66,8 @@ export function DeleteClientButton({ clientId, clientName }: DeleteClientButtonP
         <AlertDialogHeader>
           <AlertDialogTitle>Delete client?</AlertDialogTitle>
           <AlertDialogDescription>
-            <span className="font-medium text-primary">{clientName}</span> and all invoices billed to
-            them will be permanently removed. This cannot be undone.
+            <span className="font-medium text-primary">{clientName}</span> will be permanently
+            removed. Clients with existing invoices cannot be deleted — archive them instead.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
